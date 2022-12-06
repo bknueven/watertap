@@ -12,6 +12,7 @@
 ###############################################################################
 
 from collections.abc import MutableMapping
+import os
 
 import pyomo.environ as pyo
 
@@ -25,6 +26,7 @@ from idaes.core.base.costing_base import (
 
 from idaes.models.unit_models import Mixer
 
+from watertap.core.zero_order_costing import ZeroOrderCostingData
 from watertap.unit_models import (
     ReverseOsmosis0D,
     ReverseOsmosis1D,
@@ -69,10 +71,19 @@ class _DefinedFlowsDict(MutableMapping, dict):
         raise KeyError("defined flows cannot be removed")
 
 
+_source_file = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "data",
+    "techno_economic",
+    "watertap_costing_package.yaml",
+)
+
 @declare_process_block_class("WaterTAPCosting")
-class WaterTAPCostingData(FlowsheetCostingBlockData):
+class WaterTAPCostingData(ZeroOrderCostingData):
     # Define default mapping of costing methods to unit models
-    unit_mapping = {
+    unit_mapping = {**ZeroOrderCostingData.unit_mapping}
+    unit_mapping.update({
         Mixer: cost_mixer,
         Pump: cost_pump,
         EnergyRecoveryDevice: cost_energy_recovery_device,
@@ -87,61 +98,16 @@ class WaterTAPCostingData(FlowsheetCostingBlockData):
         Electrodialysis1D: cost_electrodialysis,
         IonExchange0D: cost_ion_exchange,
         GAC: cost_gac,
-    }
+    })
 
-    def build(self):
-        super().build()
-        self._registered_LCOWs = {}
+    CONFIG = ZeroOrderCostingData.CONFIG()
+    CONFIG.get("case_study_definition")._default = _source_file
+    CONFIG.case_study_definition = _source_file
 
     def build_global_params(self):
+        super().build_global_params()
 
-        # Register currency and conversion rates based on CE Index
-        register_idaes_currency_units()
-
-        # Set the base year for all costs
-        self.base_currency = pyo.units.USD_2018
-        # Set a base period for all operating costs
-        self.base_period = pyo.units.year
-
-        # Define standard material flows and costs
-        # The WaterTAP costing package creates flows
-        # in a lazy fashion, the first time `cost_flow`
-        # is called for a flow. The `_DefinedFlowsDict`
-        # prevents defining more than one flow with
-        # the same name.
-        self.defined_flows = _DefinedFlowsDict()
-
-        # Build flowsheet level costing components
-        # These are the global parameters
-        self.utilization_factor = pyo.Var(
-            initialize=0.9,
-            doc="Plant capacity utilization [fraction of uptime]",
-            units=pyo.units.dimensionless,
-        )
-        self.factor_total_investment = pyo.Var(
-            initialize=2,
-            doc="Total investment factor [investment cost/equipment cost]",
-            units=pyo.units.dimensionless,
-        )
-        self.factor_maintenance_labor_chemical = pyo.Var(
-            initialize=0.03,
-            doc="Maintenance-labor-chemical factor [fraction of investment cost/year]",
-            units=pyo.units.year**-1,
-        )
-        self.factor_capital_annualization = pyo.Var(
-            initialize=0.1,
-            doc="Capital annualization factor [fraction of investment cost/year]",
-            units=pyo.units.year**-1,
-        )
-
-        self.electricity_base_cost = pyo.Param(
-            mutable=True,
-            initialize=0.07,
-            doc="Electricity cost",
-            units=pyo.units.USD_2018 / pyo.units.kWh,
-        )
-        self.defined_flows["electricity"] = self.electricity_base_cost
-
+        # Can ADD
         self.electrical_carbon_intensity = pyo.Param(
             mutable=True,
             initialize=0.475,
@@ -181,59 +147,19 @@ class WaterTAPCostingData(FlowsheetCostingBlockData):
         super().cost_flow(flow_expr, flow_type)
 
     def build_process_costs(self):
-        self.total_capital_cost = pyo.Expression(
-            expr=self.aggregate_capital_cost, doc="Total capital cost"
-        )
-        self.total_investment_cost = pyo.Var(
-            initialize=1e3,
-            domain=pyo.NonNegativeReals,
-            doc="Total investment cost",
-            units=self.base_currency,
-        )
-        self.maintenance_labor_chemical_operating_cost = pyo.Var(
-            initialize=1e3,
-            domain=pyo.NonNegativeReals,
-            doc="Maintenance-labor-chemical operating cost",
-            units=self.base_currency / self.base_period,
-        )
-        self.total_operating_cost = pyo.Var(
-            initialize=1e3,
-            domain=pyo.NonNegativeReals,
-            doc="Total operating cost",
-            units=self.base_currency / self.base_period,
-        )
+        super().build_process_costs()
 
-        self.total_investment_cost_constraint = pyo.Constraint(
-            expr=self.total_investment_cost
-            == self.factor_total_investment * self.total_capital_cost
+        self.total_investment_cost = pyo.Expression(
+            expr=self.total_capital_cost
         )
-        self.maintenance_labor_chemical_operating_cost_constraint = pyo.Constraint(
-            expr=self.maintenance_labor_chemical_operating_cost
-            == self.factor_maintenance_labor_chemical * self.total_investment_cost
-        )
+        self.maintenance_labor_chemical_operating_cost = pyo.Expression(
+            expr=(self.salary_cost
+            + self.benefits_cost
+            + self.maintenance_cost
+            + self.laboratory_cost
+            + self.insurance_and_taxes_cost)
+            )
 
-        self.total_operating_cost_constraint = pyo.Constraint(
-            expr=self.total_operating_cost
-            == self.maintenance_labor_chemical_operating_cost
-            + self.aggregate_fixed_operating_cost
-            + self.aggregate_variable_operating_cost
-            + sum(self.aggregate_flow_costs.values()) * self.utilization_factor
-        )
-
-    def initialize_build(self):
-        calculate_variable_from_constraint(
-            self.total_investment_cost, self.total_investment_cost_constraint
-        )
-        calculate_variable_from_constraint(
-            self.maintenance_labor_chemical_operating_cost,
-            self.maintenance_labor_chemical_operating_cost_constraint,
-        )
-        calculate_variable_from_constraint(
-            self.total_operating_cost, self.total_operating_cost_constraint
-        )
-
-        for var, con in self._registered_LCOWs.values():
-            calculate_variable_from_constraint(var, con)
 
     def add_LCOW(self, flow_rate, name="LCOW"):
         """
