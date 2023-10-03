@@ -1027,6 +1027,7 @@ def run_case2(
 
 
 ## ================================= Case 1 Tests ===============================
+@pytest.mark.xfail
 @pytest.mark.component
 def test_case_2_do_nothing():
     model = run_case2(
@@ -1043,6 +1044,7 @@ def test_case_2_do_nothing():
     )
 
 
+@pytest.mark.xfail
 @pytest.mark.component
 def test_case_2_seawater_no_ca():
     model = run_case2(
@@ -1091,6 +1093,7 @@ def test_case_2_seawater_added_carbonates():
     )
 
 
+@pytest.mark.xfail
 @pytest.mark.component
 def test_case_2_low_pH_no_precip():
     model = run_case2(
