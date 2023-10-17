@@ -271,7 +271,8 @@ def cost_gac(blk, contactor_type=ContactorType.pressure):
 
     blk.capital_cost_constraint = pyo.Constraint(
         expr=blk.capital_cost
-        == blk.contactor_cost + blk.adsorbent_cost + blk.other_process_cost
+        == blk.costing_package.TIC
+        * (blk.contactor_cost + blk.adsorbent_cost + blk.other_process_cost)
     )
 
     make_fixed_operating_cost_var(blk)
