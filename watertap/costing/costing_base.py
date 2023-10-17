@@ -11,6 +11,7 @@
 #################################################################################
 
 import pyomo.environ as pyo
+from pyomo.util.calc_var_value import calculate_variable_from_constraint
 from idaes.core import declare_process_block_class
 from idaes.core.base.costing_base import FlowsheetCostingBlockData
 from idaes.models.unit_models import Mixer, HeatExchanger
@@ -152,7 +153,7 @@ class WaterTAPCostingBlockData(FlowsheetCostingBlockData):
             ),
         )
 
-    def _build_common_process_costs(self):
+    def build_process_costs(self):
         """
         Build the common process costs to WaterTAP Costing Packages.
         The currency units should already be registered.
@@ -169,6 +170,55 @@ class WaterTAPCostingBlockData(FlowsheetCostingBlockData):
             initialize=0,
             doc="Total operating cost of process per operating period",
             units=self.base_currency / self.base_period,
+        )
+
+        self._add_aggregate_factors()
+
+        self.total_capital_cost_constraint = pyo.Constraint(
+            expr=self.total_capital_cost
+            == self.factor_total_investment * self.aggregate_capital_cost
+        )
+
+        self.maintenance_labor_chemical_operating_cost = pyo.Expression(
+            expr=self.factor_maintenance_labor_chemical * self.aggregate_capital_cost,
+            doc="Maintenance-labor-chemical operating cost",
+        )
+
+        self.total_fixed_operating_cost = pyo.Expression(
+            expr=self.aggregate_fixed_operating_cost
+            + self.maintenance_labor_chemical_operating_cost,
+            doc="Total fixed operating costs",
+        )
+
+        # Other variable costs
+        self.total_variable_operating_cost = pyo.Expression(
+            expr=(
+                self.aggregate_variable_operating_cost
+                + sum(self.aggregate_flow_costs[f] for f in self.used_flows)
+                * self.utilization_factor
+            )
+            if self.used_flows
+            else self.aggregate_variable_operating_cost,
+            doc="Total variable operating cost of process per operating period",
+        )
+
+        self.total_operating_cost_constraint = pyo.Constraint(
+            expr=self.total_operating_cost
+            == (self.total_fixed_operating_cost + self.total_variable_operating_cost),
+            doc="Total operating cost of process per operating period",
+        )
+
+        self.total_annualized_cost = pyo.Expression(
+            expr=(
+                self.total_capital_cost * self.capital_recovery_factor
+                + self.total_operating_cost
+            ),
+            doc="Total annualized cost of operation",
+        )
+
+    def _add_aggregate_factors(self):
+        raise NotImplementedError(
+            "This method should be implemented by the derived class"
         )
 
     def _build_common_global_params(self):
@@ -216,6 +266,20 @@ class WaterTAPCostingBlockData(FlowsheetCostingBlockData):
         )
 
         self.fix_all_vars()
+
+    def initialize_build(self):
+        """
+        Basic initialization for flowsheet level quantities
+        """
+        calculate_variable_from_constraint(
+            self.total_capital_cost, self.total_capital_cost_constraint
+        )
+        calculate_variable_from_constraint(
+            self.total_operating_cost, self.total_operating_cost_constraint
+        )
+
+        for var, con in self._registered_LCOWs.values():
+            calculate_variable_from_constraint(var, con)
 
     def _get_costing_method_for(self, unit_model):
         """
