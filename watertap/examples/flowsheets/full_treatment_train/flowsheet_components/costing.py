@@ -42,7 +42,7 @@ def build_costing(m, costing_package=WaterTAPCosting, **kwargs):
     m.fs.costing = costing_package()
     # the full_treatment_train uses a lower than default value
     # for factor_maintenance_labor_chemical
-    m.fs.costing.factor_maintenance_labor_chemical.fix(0.02)
+    m.fs.costing.factor_maintenance_labor_chemical.fix(0.04)
     crf = m.fs.costing.factor_capital_annualization
 
     # Nanofiltration

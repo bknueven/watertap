@@ -221,7 +221,7 @@ def export_variables(flowsheet=None, exports=None):
         obj=fs.costing.factor_maintenance_labor_chemical,
         name="Maintenance-labor-chemical factor",
         ui_units=pyunits.year**-1,
-        display_units="fraction of investment cost/year",
+        display_units="fraction of equipment cost/year",
         rounding=4,
         description="NF OPEX",
         is_input=True,

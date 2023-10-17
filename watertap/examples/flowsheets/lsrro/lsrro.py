@@ -292,7 +292,7 @@ def build(
     # explicitly set the costing parameters used
     m.fs.costing.utilization_factor.fix(0.9)
     m.fs.costing.factor_total_investment.fix(2)
-    m.fs.costing.factor_maintenance_labor_chemical.fix(0.03)
+    m.fs.costing.factor_maintenance_labor_chemical.fix(0.06)
     m.fs.costing.factor_capital_annualization.fix(0.1)
     m.fs.costing.electricity_cost.set_value(0.07)
     m.fs.costing.reverse_osmosis.factor_membrane_replacement.fix(0.15)
@@ -413,6 +413,7 @@ def build(
         * (
             1
             + m.fs.costing.factor_maintenance_labor_chemical
+            / m.fs.costing.factor_total_investment
             / m.fs.costing.factor_capital_annualization
         )
         + m.fs.costing.electricity_lcow
@@ -446,6 +447,7 @@ def build(
         * (
             1
             + m.fs.costing.factor_maintenance_labor_chemical
+            / m.fs.costing.factor_total_investment
             / m.fs.costing.factor_capital_annualization
         )
         + m.fs.costing.membrane_replacement_lcow
