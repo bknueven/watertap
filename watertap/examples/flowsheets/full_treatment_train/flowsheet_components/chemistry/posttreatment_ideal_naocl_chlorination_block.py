@@ -477,7 +477,7 @@ ideal_naocl_reaction_config = {
 # End reaction_config definition
 
 # Get default solver for testing
-solver = get_solver(options={"tol": 1e-11})
+solver = get_solver(options={"tol": 1e-11, "ma27_pivtol": 0.5})
 
 
 def build_ideal_naocl_prop(model):
