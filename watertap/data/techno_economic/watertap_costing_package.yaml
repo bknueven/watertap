@@ -1,0 +1,54 @@
+base_currency: USD_2018
+base_period: year
+defined_flows:
+  electricity:
+    value: 0.0700
+    units: USD_2018/kWh
+global_parameters:
+  plant_lifetime:
+    value: 30 
+    units: year
+  wacc:
+    # Weighted Average Cost of Capital (WACC)
+    # The WaterTAP Costing package used a fixed
+    # capital recovery factor of 0.1.
+    # Assuming a 30 year plant lifetime this recovers
+    # the same capital recovery factor.
+    value: 0.09307339771758532
+    units: dimensionless
+  utilization_factor:
+    value: 0.9 
+    units: dimensionless
+  working_capital_percent_FCI:
+    # this plus the land cost
+    # recover factor_total_investment 
+    value: 0.995
+    units: dimensionless
+  land_cost_percent_FCI:
+    value: 0.005
+    units: dimensionless
+  # the remaining of these recover 
+  # factor_maintence_labor_chemical
+  salaries_percent_FCI:
+    value: 0.004
+    units: 1/year
+  benefit_percent_of_salary:
+    value: 1.0
+    units: dimensionless
+  maintenance_costs_percent_FCI:
+    value: 0.032
+    units: 1/year
+  laboratory_fees_percent_FCI:
+    value: 0.012
+    units: 1/year
+  insurance_and_taxes_percent_FCI:
+    value: 0.008
+    units: 1/year
+  TPEC:
+    # Total Purchased Equipment Cost
+    value: 3.4
+    units: dimensionless
+  TIC:
+    # Total Installed Cost
+    value: 1.65
+    units: dimensionless
