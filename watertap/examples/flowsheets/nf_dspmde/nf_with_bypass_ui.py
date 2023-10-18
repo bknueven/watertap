@@ -384,7 +384,7 @@ def export_variables(flowsheet=None, exports=None):
 
 def build_flowsheet():
     # build and solve initial flowsheet
-    solver = get_solver()
+    solver = get_solver(options={"bound_push": 1e-04})
     m = nf_with_bypass.build()
     nf_with_bypass.initialize(m, solver)
     nf_with_bypass.unfix_opt_vars(m)
@@ -394,6 +394,6 @@ def build_flowsheet():
 
 def solve_flowsheet(flowsheet=None):
     fs = flowsheet
-    solver = get_solver()
+    solver = get_solver(options={"bound_push": 1e-04})
     results = nf_with_bypass.optimize(fs, solver)
     return results

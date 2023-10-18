@@ -46,7 +46,7 @@ __author__ = "Alexander Dudchenko, Adam Atia"
 
 
 def main():
-    solver = get_solver()
+    solver = get_solver(options={"bound_push": 1e-04})
     m = build()
     initialize(m, solver)
     unfix_opt_vars(m)

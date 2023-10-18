@@ -368,7 +368,7 @@ def export_variables(flowsheet=None, exports=None):
 
 def build_flowsheet():
     # build and solve initial flowsheet
-    solver = get_solver()
+    solver = get_solver(options={"bound_push": 1e-04})
     m = nf.build()
     nf.initialize(m, solver)
     nf.add_objective(m)
@@ -378,6 +378,6 @@ def build_flowsheet():
 
 def solve_flowsheet(flowsheet=None):
     fs = flowsheet
-    solver = get_solver()
+    solver = get_solver(options={"bound_push": 1e-04})
     results = nf.optimize(fs, solver)
     return results
