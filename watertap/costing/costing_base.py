@@ -204,7 +204,7 @@ class WaterTAPCostingBlockData(FlowsheetCostingBlockData):
         )
 
         self.TPEC = pyo.Var(
-            initialize=3.4,
+            initialize=3.4 * (2.0 / 1.65),
             doc="Total Purchased Equipment Cost (TPEC)",
             units=pyo.units.dimensionless,
         )
@@ -217,6 +217,22 @@ class WaterTAPCostingBlockData(FlowsheetCostingBlockData):
 
         self.fix_all_vars()
 
+    @staticmethod
+    def add_cost_factor(blk, factor):
+        if factor == "TPEC":
+            blk.cost_factor = pyo.Expression(
+                expr=blk.config.flowsheet_costing_block.TPEC
+            )
+        elif factor == "TIC":
+            blk.cost_factor = pyo.Expression(
+                expr=blk.config.flowsheet_costing_block.TIC
+            )
+        else:
+            blk.cost_factor = pyo.Expression(expr=1.0)
+        blk.direct_capital_cost = pyo.Expression(
+            expr=blk.capital_cost / blk.cost_factor
+        )
+
     def _get_costing_method_for(self, unit_model):
         """
         Allow the unit model to register its default costing method,
@@ -226,6 +242,47 @@ class WaterTAPCostingBlockData(FlowsheetCostingBlockData):
         if hasattr(unit_model, "default_costing_method"):
             return unit_model.default_costing_method
         return super()._get_costing_method_for(unit_model)
+
+    def aggregate_costs(self):
+        """
+        This method aggregates costs from all the unit models and flows
+        registered with this FlowsheetCostingBlock and creates aggregate
+        variables for these on the FlowsheetCostingBlock that can be used for
+        further process-wide costing calculations.
+
+        The following costing variables are aggregated from all the registered
+        UnitModelCostingBlocks (if they exist):
+
+        * capital_cost,
+        * direct_capital_cost,
+        * fixed_operating_cost, and
+        * variable_operating_cost
+
+        Additionally, aggregate flow variables are created for all registered
+        flow types along with aggregate costs associated with each of these.
+
+        Args:
+            None
+        """
+        super().aggregate_costs()
+        c_units = self.base_currency
+        t_units = self.base_period
+
+        self.aggregate_direct_capital_cost = pyo.Var(units=c_units)
+
+        @self.Constraint(doc="Aggregation constraint for capital cost")
+        def aggregate_direct_capital_cost_constraint(blk):
+            e = 0
+            for u in self._registered_unit_costing:
+                # Allow for units that might only have a subset of cost Vars
+                if hasattr(u, "direct_capital_cost"):
+                    e += pyo.units.convert(u.direct_capital_cost, to_units=c_units)
+                elif hasattr(u, "capital_cost"):
+                    raise RuntimeError(
+                        f"WaterTAP models with a capital_cost must also supply a direct_capital_cost. Found unit {u.unit_model} with `capital_cost` but no `direct_capital_cost`."
+                    )
+
+            return blk.aggregate_direct_capital_cost == e
 
     def register_flow_type(self, flow_type, cost):
         """
