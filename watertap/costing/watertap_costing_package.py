@@ -105,6 +105,8 @@ class WaterTAPCostingData(WaterTAPCostingBlockData):
         )
 
     def initialize_build(self):
+        super().initialize_build()
+
         calculate_variable_from_constraint(
             self.total_capital_cost, self.total_capital_cost_constraint
         )

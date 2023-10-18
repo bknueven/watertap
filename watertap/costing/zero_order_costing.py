@@ -253,6 +253,7 @@ class ZeroOrderCostingData(WaterTAPCostingBlockData):
         """
         Basic initialization for flowsheet level quantities
         """
+        super().initialize_build()
         calculate_variable_from_constraint(self.land_cost, self.land_cost_constraint)
         calculate_variable_from_constraint(
             self.working_capital, self.working_capital_constraint

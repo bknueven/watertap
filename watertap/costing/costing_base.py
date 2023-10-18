@@ -10,9 +10,14 @@
 # "https://github.com/watertap-org/watertap/"
 #################################################################################
 
+import math
 import pyomo.environ as pyo
 from idaes.core import declare_process_block_class
-from idaes.core.base.costing_base import FlowsheetCostingBlockData
+from idaes.core.base.costing_base import (
+    FlowsheetCostingBlockData,
+    DefaultCostingComponents,
+)
+from idaes.core.util import scaling as iscale
 from idaes.models.unit_models import Mixer, HeatExchanger
 
 from watertap.core.util.misc import is_constant_up_to_units
@@ -38,6 +43,29 @@ class WaterTAPCostingBlockData(FlowsheetCostingBlockData):
     def build(self):
         super().build()
         self._registered_LCOWs = {}
+
+    def initialize_build(self):
+        """
+        This method automatically conservatively scales the
+        high-level quantities on the unit models.
+
+        The following costing variables are aggregated from all the registered
+        UnitModelCostingBlocks (if they exist):
+
+        * capital_cost,
+        * fixed_operating_cost, and
+        * variable_operating_cost
+        """
+
+        for u in self._registered_unit_costing:
+            for c in DefaultCostingComponents:
+                if hasattr(u, c):
+                    var = getattr(u, c)
+                    val = abs(pyo.value(var))
+                    if val > 1.0e-10:
+                        iscale.set_scaling_factor(
+                            var, 1.0 / math.sqrt(val), overwrite=False
+                        )
 
     def add_LCOW(self, flow_rate, name="LCOW"):
         """
