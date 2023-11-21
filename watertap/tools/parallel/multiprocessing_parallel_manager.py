@@ -10,27 +10,32 @@
 # "https://github.com/watertap-org/watertap/"
 #################################################################################
 
-import numpy
+import functools
+import logging
+import multiprocessing
 
+import numpy
 
 from watertap.tools.parallel.results import LocalResults
 from watertap.tools.parallel.parallel_manager import (
-    parallelActor,
+    build_and_execute,
     ParallelManager,
 )
-import multiprocessing
+
+
+_logger = logging.getLogger(__name__)
 
 
 class MultiprocessingParallelManager(ParallelManager):
-    def __init__(self, number_of_subprocesses=1, **kwargs):
+    def __init__(
+        self,
+        number_of_subprocesses=1,
+        **kwargs,
+    ):
         self.max_number_of_subprocesses = number_of_subprocesses
 
         # this will be updated when child processes are kicked off
         self.actual_number_of_subprocesses = None
-
-        # Future -> (process number, parameters). Used to keep track of the process number and parameters for
-        # all in-progress futures
-        self.running_futures = dict()
 
     def is_root_process(self):
         return True
@@ -82,40 +87,19 @@ class MultiprocessingParallelManager(ParallelManager):
         # split the parameters prameters for async run
         self.expected_samples = len(all_parameters)
         divided_parameters = numpy.array_split(all_parameters, self.expected_samples)
-        # create queues, run queue will be used to store paramters we want to run
-        # and return_queue is used to store results
-        self.run_queue = multiprocessing.Queue()
-        self.return_queue = multiprocessing.Queue()
-        for i, param in enumerate(divided_parameters):
-            # print(param)
-            self.run_queue.put([i, param])
-        # setup multiprocessing actors
-        self.actors = []
 
-        for cpu in range(self.actual_number_of_subprocesses):
-            self.actors.append(
-                multiprocessing.Process(
-                    target=multiProcessingActor,
-                    args=(
-                        self.run_queue,
-                        self.return_queue,
-                        do_build,
-                        do_build_kwargs,
-                        do_execute,
-                        divided_parameters[0],
-                    ),
-                )
-            )
-            self.actors[-1].start()
+        build_and_execute_this_run = functools.partial(
+            build_and_execute, do_build, do_build_kwargs, do_execute
+        )
+
+        actor = functools.partial(multiProcessingActor, build_and_execute_this_run)
+
+        self._pool = multiprocessing.Pool(self.actual_number_of_subprocesses)
+        self._results = self._pool.map_async(actor, enumerate(divided_parameters))
+        self._pool.close()
 
     def gather(self):
-        results = []
-        # collect result from the actors
-        while len(results) < self.expected_samples:
-            if self.return_queue.empty() == False:
-                i, values, result = self.return_queue.get()
-
-                results.append(LocalResults(i, values, result))
+        results = self._results.get()
         # sort the results by the process number to keep a deterministic ordering
         results.sort(key=lambda result: result.process_number)
         return results
@@ -124,20 +108,11 @@ class MultiprocessingParallelManager(ParallelManager):
         return results
 
 
-# This function is used for running the actors in multprocessing
 def multiProcessingActor(
-    queue,
-    return_queue,
-    do_build,
-    do_build_kwargs,
-    do_execute,
-    local_parameters,
+    build_and_execute_this_run,
+    i_local_parameters,
 ):
-    actor = parallelActor(do_build, do_build_kwargs, do_execute, local_parameters)
-    while True:
-        if queue.empty():
-            break
-        else:
-            i, local_parameters = queue.get()
-            result = actor.execute(local_parameters)
-            return_queue.put([i, local_parameters, result])
+    i, local_parameters = i_local_parameters
+    return LocalResults(
+        i, local_parameters, build_and_execute_this_run(local_parameters)
+    )
