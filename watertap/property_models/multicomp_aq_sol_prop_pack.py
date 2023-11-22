@@ -1940,7 +1940,7 @@ class MCASStateBlockData(StateBlockData):
         if solve:
             if adjust_by_ion is not None:
                 ion_before_adjust = state_var["Liq", adjust_by_ion].value
-            solve = get_solver()
+            solve = get_solver(options={"tol": 1e-12})
             solve.solve(self)
             results = solve.solve(self)
             if check_optimal_termination(results):
