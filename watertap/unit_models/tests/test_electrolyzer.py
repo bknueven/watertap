@@ -225,6 +225,7 @@ class TestElectrolyzer:
     def test_solve(self, chlor_alkali_elec):
 
         m = chlor_alkali_elec
+        solver.options["tol"] = 1e-12
         results = solver.solve(m)
 
         # check for optimal solution
