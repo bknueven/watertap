@@ -199,10 +199,10 @@ class TestElectrodialysisVoltageConst:
             "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Na_+")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Cl_-")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Cl_-")
         )
         # set scaling factors for some vars
         iscale.set_scaling_factor(m.fs.unit.cell_width, 100)
@@ -477,13 +477,13 @@ class TestElectrodialysisCurrentConst:
         m = electrodialysis_1d_cell2
         # set default scaling for state vars
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 5e0, index=("Liq", "H2O")
+            "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Na_+")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Cl_-")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Cl_-")
         )
         # set scaling factors for some vars
         iscale.set_scaling_factor(m.fs.unit.cell_width, 100)
@@ -697,16 +697,16 @@ class TestElectrodialysis_withNeutralSPecies:
         m = electrodialysis_1d_cell3
         # set default scaling for state vars
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 5e0, index=("Liq", "H2O")
+            "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Na_+")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Cl_-")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Cl_-")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e3, index=("Liq", "N")
+            "flow_mol_phase_comp", 1e4, index=("Liq", "N")
         )
         # set scaling factors for some vars
         iscale.set_scaling_factor(m.fs.unit.cell_width, 10)
@@ -933,10 +933,10 @@ class Test_ED_MembNonohm_On_ConstV:
             "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Na_+")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Cl_-")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Cl_-")
         )
         # set scaling factors for some vars
         iscale.set_scaling_factor(m.fs.unit.cell_width, 10)
@@ -1152,10 +1152,10 @@ class Test_ED_MembNonohm_On_DL_On_ConstV:
             "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Na_+")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Cl_-")
+            "flow_mol_phase_comp", 1e3, index=("Liq", "Cl_-")
         )
         # set scaling factors for some vars
         iscale.set_scaling_factor(m.fs.unit.cell_width, 10)
@@ -1332,7 +1332,7 @@ class Test_ED_MembNonohm_On_DL_On_ConstV_ilimimethods:
         model = (edcell_ilim_empi, edcell_ilim_theo)
         for m in model:
             m.fs.properties.set_default_scaling(
-                "flow_mol_phase_comp", 1e1, index=("Liq", "H2O")
+                "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
             )
             m.fs.properties.set_default_scaling(
                 "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
@@ -1546,10 +1546,10 @@ class Test_ED_MembNonohm_On_DL_On_ConstC:
             "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Na_+")
+            "flow_mol_phase_comp", 1e4, index=("Liq", "Na_+")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e2, index=("Liq", "Cl_-")
+            "flow_mol_phase_comp", 1e4, index=("Liq", "Cl_-")
         )
         # set scaling factors for some vars
         iscale.set_scaling_factor(m.fs.unit.cell_width, 10)
@@ -1560,7 +1560,7 @@ class Test_ED_MembNonohm_On_DL_On_ConstC:
         # Added this unit check scaling
         assert_units_consistent(m)
 
-        initialization_tester(m)
+        initialization_tester(m, outlvl=idaeslog.DEBUG)
         badly_scaled_var_values = {
             var.name: val
             for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
