@@ -1813,7 +1813,7 @@ def test_pressure_recovery_step_2_ions():
 
 
 def calc_scale(value):
-    return -1 * log(value, 10)
+    return -1 * log(value, 10) / 2
 
 
 @pytest.mark.component
