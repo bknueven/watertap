@@ -77,7 +77,7 @@ class IpoptWaterTAP(IPOPT):
         if "honor_original_bounds" not in self.options:
             self.options["honor_original_bounds"] = "no"
         if "bound_push" not in self.options:
-            self.options["bound_push"] = 1e-06
+            self.options["bound_push"] = 1e-20
 
         if not self._is_user_scaling():
             super()._presolve(*args, **kwds)
