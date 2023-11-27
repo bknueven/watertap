@@ -80,8 +80,6 @@ class IpoptWaterTAP(IPOPT):
             self.options["bound_push"] = 1e-20
         if "ma27_pivtol" not in self.options:
             self.options["ma27_pivtol"] = 1e-02
-        if "mumps_pivtol" not in self.options:
-            self.options["mumps_pivtol"] = 1e-02
 
         if not self._is_user_scaling():
             super()._presolve(*args, **kwds)
