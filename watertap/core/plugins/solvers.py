@@ -78,8 +78,12 @@ class IpoptWaterTAP(IPOPT):
             self.options["honor_original_bounds"] = "no"
         if "bound_push" not in self.options:
             self.options["bound_push"] = 1e-20
-        if "ma27_pivtol" not in self.options:
-            self.options["ma27_pivtol"] = 1e-02
+        # if "ma27_pivtol" not in self.options:
+        #     self.options["ma27_pivtol"] = 1e-02
+        if "ma27_pivtolmax" not in self.options:
+            self.options["ma27_pivtolmax"] = 5e-01
+        if "linear_scaling_on_demand" not in self.options:
+            self.options["linear_scaling_on_demand"] = "no"
 
         if not self._is_user_scaling():
             super()._presolve(*args, **kwds)
