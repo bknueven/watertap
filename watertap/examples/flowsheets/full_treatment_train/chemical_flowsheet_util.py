@@ -41,7 +41,7 @@ def set_H2O_molefraction(port):
 def zero_out_non_H2O_molefractions(port):
     for i in port.mole_frac_comp:
         if i[1] != "H2O":
-            port.mole_frac_comp[i[0], i[1]].set_value(0)
+            port.mole_frac_comp[i[0], i[1]].set_value(1e-20)
 
 
 def fix_all_molefractions(port):

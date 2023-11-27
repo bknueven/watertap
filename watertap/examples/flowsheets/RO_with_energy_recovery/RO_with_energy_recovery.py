@@ -176,19 +176,19 @@ def build(erd_type=ERDtype.pressure_exchanger):
         "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
     )
     # set unit model values
-    iscale.set_scaling_factor(m.fs.P1.control_volume.work, 1e-3)
-    iscale.set_scaling_factor(m.fs.RO.area, 1e-2)
+    iscale.set_scaling_factor(m.fs.P1.control_volume.work, 1e-2)
+    iscale.set_scaling_factor(m.fs.RO.area, 1e-1)
     m.fs.feed.properties[0].flow_vol_phase["Liq"]
     m.fs.feed.properties[0].mass_frac_phase_comp["Liq", "NaCl"]
     if erd_type == ERDtype.pressure_exchanger:
-        iscale.set_scaling_factor(m.fs.P2.control_volume.work, 1e-3)
-        iscale.set_scaling_factor(m.fs.PXR.low_pressure_side.work, 1e-3)
-        iscale.set_scaling_factor(m.fs.PXR.high_pressure_side.work, 1e-3)
+        iscale.set_scaling_factor(m.fs.P2.control_volume.work, 1e-2)
+        iscale.set_scaling_factor(m.fs.PXR.low_pressure_side.work, 1e-2)
+        iscale.set_scaling_factor(m.fs.PXR.high_pressure_side.work, 1e-2)
         # touch properties used in specifying and initializing the model
         m.fs.S1.mixed_state[0].mass_frac_phase_comp
         m.fs.S1.PXR_state[0].flow_vol_phase["Liq"]
     elif erd_type == ERDtype.pump_as_turbine:
-        iscale.set_scaling_factor(m.fs.ERD.control_volume.work, 1e-3)
+        iscale.set_scaling_factor(m.fs.ERD.control_volume.work, 1e-2)
     else:
         erd_type_not_found(erd_type)
     # unused scaling factors needed by IDAES base costing module
@@ -474,9 +474,6 @@ def optimize_set_up(m):
         expr=m.fs.product.properties[0].mass_frac_phase_comp["Liq", "NaCl"]
         <= m.fs.product_salinity
     )
-    iscale.constraint_scaling_transform(
-        m.fs.eq_product_quality, 1e3
-    )  # scaling constraint
     m.fs.eq_minimum_water_flux = Constraint(
         expr=m.fs.RO.flux_mass_phase_comp[0, 1, "Liq", "H2O"] >= m.fs.minimum_water_flux
     )

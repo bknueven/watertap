@@ -196,7 +196,7 @@ class TestElectrodialysisVoltageConst:
         m = electrodialysis_1d_cell1
         # set default scaling for state vars
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
             "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
@@ -214,7 +214,8 @@ class TestElectrodialysisVoltageConst:
 
         initialization_tester(m)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
         # check to make sure DOF does not change
@@ -476,7 +477,7 @@ class TestElectrodialysisCurrentConst:
         m = electrodialysis_1d_cell2
         # set default scaling for state vars
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 5e1, index=("Liq", "H2O")
+            "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
             "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
@@ -490,7 +491,8 @@ class TestElectrodialysisCurrentConst:
         iscale.calculate_scaling_factors(m.fs)
         initialization_tester(m)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
         # check to make sure DOF does not change
@@ -695,7 +697,7 @@ class TestElectrodialysis_withNeutralSPecies:
         m = electrodialysis_1d_cell3
         # set default scaling for state vars
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 5e1, index=("Liq", "H2O")
+            "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
             "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
@@ -714,7 +716,7 @@ class TestElectrodialysis_withNeutralSPecies:
         initialization_tester(m, outlvl=idaeslog.DEBUG)
         badly_scaled_var_values = {
             var.name: val
-            for (var, val) in iscale.badly_scaled_var_generator(m, zero=1e-9)
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
         # check to make sure DOF does not change
@@ -727,7 +729,8 @@ class TestElectrodialysis_withNeutralSPecies:
         results = solver.solve(m)
         assert_optimal_termination(results)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
 
@@ -927,7 +930,7 @@ class Test_ED_MembNonohm_On_ConstV:
         m = electrodialysis_1d_cell4
         # set default scaling for state vars
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
             "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
@@ -946,7 +949,8 @@ class Test_ED_MembNonohm_On_ConstV:
 
         initialization_tester(m)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
         # check to make sure DOF does not change
@@ -960,7 +964,8 @@ class Test_ED_MembNonohm_On_ConstV:
         results = solver.solve(m)
         assert_optimal_termination(results)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
 
@@ -1144,7 +1149,7 @@ class Test_ED_MembNonohm_On_DL_On_ConstV:
         m = electrodialysis_1d_cell5
         # set default scaling for state vars
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
             "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
@@ -1163,7 +1168,8 @@ class Test_ED_MembNonohm_On_DL_On_ConstV:
 
         initialization_tester(m)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
         # check to make sure DOF does not change
@@ -1176,7 +1182,8 @@ class Test_ED_MembNonohm_On_DL_On_ConstV:
         results = solver.solve(m)
         assert_optimal_termination(results)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
 
@@ -1325,7 +1332,7 @@ class Test_ED_MembNonohm_On_DL_On_ConstV_ilimimethods:
         model = (edcell_ilim_empi, edcell_ilim_theo)
         for m in model:
             m.fs.properties.set_default_scaling(
-                "flow_mol_phase_comp", 1e1, index=("Liq", "H2O")
+                "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
             )
             m.fs.properties.set_default_scaling(
                 "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
@@ -1341,7 +1348,8 @@ class Test_ED_MembNonohm_On_DL_On_ConstV_ilimimethods:
             assert degrees_of_freedom(m) == 0
             initialization_tester(m)
             badly_scaled_var_values = {
-                var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+                var.name: val
+                for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
             }
             assert not badly_scaled_var_values
             results = solver.solve(m)
@@ -1535,13 +1543,13 @@ class Test_ED_MembNonohm_On_DL_On_ConstC:
         m = electrodialysis_1d_cell6
         # set default scaling for state vars
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mol_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e3, index=("Liq", "Na_+")
+            "flow_mol_phase_comp", 1e4, index=("Liq", "Na_+")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mol_phase_comp", 1e3, index=("Liq", "Cl_-")
+            "flow_mol_phase_comp", 1e4, index=("Liq", "Cl_-")
         )
         # set scaling factors for some vars
         iscale.set_scaling_factor(m.fs.unit.cell_width, 10)
@@ -1552,9 +1560,10 @@ class Test_ED_MembNonohm_On_DL_On_ConstC:
         # Added this unit check scaling
         assert_units_consistent(m)
 
-        initialization_tester(m)
+        initialization_tester(m, outlvl=idaeslog.DEBUG)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
         # check to make sure DOF does not change
@@ -1567,7 +1576,8 @@ class Test_ED_MembNonohm_On_DL_On_ConstC:
         results = solver.solve(m)
         assert_optimal_termination(results)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(m, small=1e-6)
         }
         assert not badly_scaled_var_values
 
@@ -1818,7 +1828,8 @@ class Test_ED_pressure_drop_components:
         assert degrees_of_freedom(ed_m[0]) == 0
         initialization_tester(ed_m[0], outlvl=idaeslog.DEBUG)
         badly_scaled_var_values = {
-            var.name: val for (var, val) in iscale.badly_scaled_var_generator(ed_m[0])
+            var.name: val
+            for (var, val) in iscale.badly_scaled_var_generator(ed_m[0], small=1e-6)
         }
         assert not badly_scaled_var_values
         results = solver.solve(ed_m[0])

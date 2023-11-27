@@ -312,10 +312,10 @@ class TestReverseOsmosis:
         m = RO_frame
 
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
 
         calculate_scaling_factors(m)
@@ -331,7 +331,7 @@ class TestReverseOsmosis:
     @pytest.mark.component
     def test_var_scaling(self, RO_frame):
         m = RO_frame
-        badly_scaled_var_lst = list(badly_scaled_var_generator(m))
+        badly_scaled_var_lst = list(badly_scaled_var_generator(m, small=1e-6))
         assert badly_scaled_var_lst == []
 
     @pytest.mark.component
@@ -461,10 +461,10 @@ class TestReverseOsmosis:
 
         # Scaling
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
 
         calculate_scaling_factors(m)
@@ -630,10 +630,10 @@ class TestReverseOsmosis:
         m = RO_SKK_frame
 
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
 
         calculate_scaling_factors(m)
@@ -778,10 +778,10 @@ class TestReverseOsmosis:
 
         # Scaling
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
         calculate_scaling_factors(m)
 
@@ -903,10 +903,10 @@ class TestReverseOsmosis:
         assert degrees_of_freedom(m) == 0
 
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
         calculate_scaling_factors(m)
 
@@ -1025,10 +1025,10 @@ class TestReverseOsmosis:
         assert degrees_of_freedom(m) == 0
 
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
 
         calculate_scaling_factors(m)
@@ -1152,10 +1152,10 @@ class TestReverseOsmosis:
         assert degrees_of_freedom(m) == 0
 
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
 
         calculate_scaling_factors(m)
@@ -1166,7 +1166,7 @@ class TestReverseOsmosis:
 
         initialization_tester(m, outlvl=idaeslog.DEBUG)
 
-        badly_scaled_var_lst = list(badly_scaled_var_generator(m))
+        badly_scaled_var_lst = list(badly_scaled_var_generator(m, small=1e-6))
         assert badly_scaled_var_lst == []
 
         results = solver.solve(m)
@@ -1278,10 +1278,10 @@ class TestReverseOsmosis:
         assert degrees_of_freedom(m) == 0
 
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
 
         calculate_scaling_factors(m)
@@ -1405,10 +1405,10 @@ class TestReverseOsmosis:
         assert degrees_of_freedom(m) == 0
 
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e1, index=("Liq", "H2O")
+            "flow_mass_phase_comp", 1e0, index=("Liq", "H2O")
         )
         m.fs.properties.set_default_scaling(
-            "flow_mass_phase_comp", 1e3, index=("Liq", "NaCl")
+            "flow_mass_phase_comp", 1e2, index=("Liq", "NaCl")
         )
 
         calculate_scaling_factors(m)

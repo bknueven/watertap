@@ -629,7 +629,7 @@ see reaction package for documentation.}""",
                 == blk.properties_out[t].conc_mass_comp["S_IC"] / mw_c
             )
 
-        iscale.set_scaling_factor(self.properties_out[0].flow_vol, 1e5)
+        iscale.set_scaling_factor(self.properties_out[0].flow_vol, 1e0)
 
     def initialize_build(
         self,
