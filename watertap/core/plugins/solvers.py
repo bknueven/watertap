@@ -11,6 +11,10 @@
 #################################################################################
 
 import logging
+import math
+import time
+
+import numpy as np
 
 import pyomo.environ as pyo
 from pyomo.core.base.block import _BlockData
@@ -141,7 +145,8 @@ class IpoptWaterTAP(IPOPT):
             if nlp.nnz_hessian_lag() == 0:
                 if "alpha_for_y" not in self.options:
                     self.options["alpha_for_y"] = "bound-mult"
-
+            # run Constraint Consensus Algorithm
+            run_ccs(self._model, nlp, self._tee)
         try:
             # this creates the NL file, among other things
             return super()._presolve(*args, **kwds)
@@ -211,3 +216,209 @@ _idaes_default_solver = _default_solver_config_value._default
 _default_solver_config_value.set_default_value("ipopt-watertap")
 if not _default_solver_config_value._userSet:
     _default_solver_config_value.reset()
+
+
+from pyomo.environ import ComponentMap
+from pyomo.contrib.incidence_analysis import get_incident_variables, IncidenceMethod
+
+
+def run_ccs(model, nlp, tee):
+
+    start_time = time.time()
+
+    alpha_tol = 100 / 1000
+    beta_tol = 10 / 1000
+    iter_limit = 100
+
+    if tee:
+        print("Constraint Consensus Feasibility Pump")
+        print(
+            "{_iter:<6}"
+            "{infeasibility:<16}"
+            "{alpha:<11}"
+            "{beta:<11}"
+            "{rho:<11}"
+            "{time:<7}".format(
+                _iter="Iter",
+                infeasibility="Infeas",
+                alpha="alpha",
+                beta="beta",
+                rho="rho",
+                time="Time",
+            )
+        )
+
+    lb = nlp.primals_lb()
+    ub = nlp.primals_ub()
+
+    x = nlp.init_primals().copy()
+
+    if np.any((ub - lb) < 1e-10):
+        raise ValueError("Bounds too close")
+
+    # lb_mask = x + 5e-11 < lb
+    # x[lb_mask] = lb[lb_mask] + 5e-11
+    # ub_mask = x - 5e-11 > lb
+    # x[ub_mask] = ub[ub_mask] - 5e-11
+
+    ineq_lb = nlp.ineq_lb()
+    ineq_ub = nlp.ineq_ub()
+
+    alpha = np.nan
+    beta = np.nan
+    rho = np.nan
+
+    for _iter in range(iter_limit):
+        # step 1
+        ninf = 0
+        n = np.zeros(len(x))
+        s = np.zeros(len(x))
+
+        # step 2
+        nlp.set_primals(x)
+
+        eq_val = nlp.evaluate_eq_constraints()
+        ineq_val = nlp.evaluate_ineq_constraints()
+
+        jac_eq = nlp.evaluate_jacobian_eq().tocsr()
+        jac_ineq = nlp.evaluate_jacobian_ineq().tocsr()
+
+        if eq_val.size == 0:
+            max_eq_resid = 0
+        else:
+            max_eq_resid = np.max(np.abs(eq_val))
+        if ineq_val.size == 0:
+            max_ineq_resid = 0
+        else:
+            max_lb_resid = np.max(ineq_lb - ineq_val)
+            max_ub_resid = np.max(ineq_val - ineq_ub)
+            max_ineq_resid = max(max_lb_resid, max_ub_resid)
+        primal_inf = max(max_eq_resid, max_ineq_resid)
+
+        if tee:
+            print(
+                "{_iter:<6}"
+                "{infeasibility:<16.7e}"
+                "{alpha:<11.2e}"
+                "{beta:<11.2e}"
+                "{rho:<11.2e}"
+                "{time:<7.3f}".format(
+                    _iter=_iter,
+                    infeasibility=primal_inf,
+                    alpha=alpha,
+                    beta=beta,
+                    rho=rho,
+                    time=time.time() - start_time,
+                )
+            )
+
+        alpha = 0.0
+
+        for idx, viol in enumerate(eq_val):
+            if viol == 0.0:
+                # constraint is exactly satisfied
+                continue
+
+            #  viol * jac_eq[idx] / ||jac_eq[idx]||**2
+            row = jac_eq.getrow(idx)
+            div = sum(val * val for val in row.data)
+            feas_dis = abs(viol / math.sqrt(div))
+            alpha = max(alpha, feas_dis)
+            if feas_dis < alpha_tol:
+                continue
+            row *= -(viol / div)
+            ninf += 1
+            n[row.indices] += 1
+            s += row
+
+        for idx, val in enumerate(ineq_val):
+            viol = max(ineq_lb[idx] - val, val - ineq_ub[idx])
+            if viol < 0.0:
+                # try to keep an interior point by making
+                # these inequalities strict
+                continue
+            #  viol * jac_eq[idx] / ||jac_eq[idx]||**2
+            row = jac_ineq.getrow(idx)
+            div = sum(val * val for val in row.data)
+            feas_dis = abs(viol / math.sqrt(div))
+            alpha = max(alpha, feas_dis)
+            if feas_dis < alpha_tol:
+                continue
+            row *= -(viol / div)
+            ninf += 1
+            n[row.indices] += 1
+            s += row
+
+        # step 3
+        if ninf == 0:
+            break
+
+        # step 4
+        # turn single row-matrix
+        # back into array
+        s = s.A[0]
+        t = s / n
+
+        # step 5
+        beta = np.linalg.norm(t)
+        if beta <= beta_tol:
+            break
+
+        # step 6 & 7
+        # TODO: could just calculate directly
+        rho = 1
+        while rho > 1e-20:
+            trial = x + rho * t
+            if np.any(trial >= ub):
+                rho *= 0.5
+                continue
+            if np.any(trial <= lb):
+                rho *= 0.5
+                continue
+            x = trial
+            break
+        else:  # no break
+            # direction is too small
+            break
+
+        # step 8
+        continue
+
+    # TODO: better termination message
+    eq_val = nlp.evaluate_eq_constraints()
+    ineq_val = nlp.evaluate_ineq_constraints()
+
+    jac_eq = nlp.evaluate_jacobian_eq().tocsr()
+    jac_ineq = nlp.evaluate_jacobian_ineq().tocsr()
+
+    if eq_val.size == 0:
+        max_eq_resid = 0
+    else:
+        max_eq_resid = np.max(np.abs(eq_val))
+    if ineq_val.size == 0:
+        max_ineq_resid = 0
+    else:
+        max_lb_resid = np.max(ineq_lb - ineq_val)
+        max_ub_resid = np.max(ineq_val - ineq_ub)
+        max_ineq_resid = max(max_lb_resid, max_ub_resid)
+    primal_inf = max(max_eq_resid, max_ineq_resid)
+
+    if tee:
+        print(
+            "{_iter:<6}"
+            "{infeasibility:<16.7e}"
+            "{alpha:<11.2e}"
+            "{beta:<11.2e}"
+            "{rho:<11.2e}"
+            "{time:<7.3f}".format(
+                _iter=_iter,
+                infeasibility=primal_inf,
+                alpha=alpha,
+                beta=beta,
+                rho=rho,
+                time=time.time() - start_time,
+            )
+        )
+
+    for idx, v in enumerate(nlp.vlist):
+        v.set_value(x[idx], skip_validation=True)
