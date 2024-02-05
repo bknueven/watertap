@@ -237,11 +237,11 @@ def run_ccs(model, nlp, tee):
             "{infeasibility:<16}"
             "{alpha:<11}"
             "{beta:<11}"
-            "{time:<7}".format(
+            "{time:<6}".format(
                 _iter="iter",
-                infeasibility="inf_pr",
+                infeasibility="   inf_pr   ",
                 alpha="inf_dist",
-                beta="step_size",
+                beta=" ||d|| ",
                 time="time",
             )
         )
@@ -261,8 +261,7 @@ def run_ccs(model, nlp, tee):
     ineq_ub = nlp.ineq_ub()
 
     alpha = np.nan
-    beta = np.nan
-    rho = np.nan
+    beta = 0.0
 
     for _iter in range(iter_limit):
         # step 1
@@ -296,21 +295,6 @@ def run_ccs(model, nlp, tee):
         max_ub_resid = np.max(x - ub)
         max_bound_resid = max(max_lb_resid, max_ub_resid)
         primal_inf = max(max_eq_resid, max_ineq_resid, max_bound_resid)
-
-        if tee:
-            print(
-                "{_iter:<6}"
-                "{infeasibility:<16.7e}"
-                "{alpha:<11.2e}"
-                "{beta:<11.2e}"
-                "{time:<7.3f}".format(
-                    _iter=_iter,
-                    infeasibility=primal_inf,
-                    alpha=alpha,
-                    beta=beta,
-                    time=time.time() - start_time,
-                )
-            )
 
         alpha = 0.0
 
@@ -382,6 +366,21 @@ def run_ccs(model, nlp, tee):
             s[idx] += d * viol * (len(eq_val) + len(ineq_val))
             n[idx] += 1 * (len(eq_val) + len(ineq_val))
 
+        if tee:
+            print(
+                "{_iter:<6}"
+                "{infeasibility:<16.7e}"
+                "{alpha:<11.2e}"
+                "{beta:<11.2e}"
+                "{time:<7.2f}".format(
+                    _iter=_iter,
+                    infeasibility=primal_inf,
+                    alpha=alpha,
+                    beta=beta,
+                    time=time.time() - start_time,
+                )
+            )
+
         # step 3
         if ninf == 0:
             break
@@ -406,22 +405,6 @@ def run_ccs(model, nlp, tee):
 
         # step 8
         continue
-
-    # TODO: better termination message
-    if tee:
-        print(
-            "{_iter:<6}"
-            "{infeasibility:<16.7e}"
-            "{alpha:<11.2e}"
-            "{beta:<11.2e}"
-            "{time:<7.3f}".format(
-                _iter=_iter + 1,
-                infeasibility=primal_inf,
-                alpha=alpha,
-                beta=beta,
-                time=time.time() - start_time,
-            )
-        )
 
     primals = nlp.get_primals()
     for idx, v in enumerate(nlp.vlist):
