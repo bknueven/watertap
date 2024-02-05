@@ -367,11 +367,12 @@ def run_ccs(model, nlp, tee):
                 # try to keep an interior point by making
                 # these inequalities strict
                 continue
+            # push variable bounds inside
             if viol_lb > viol_ub:
-                viol = viol_lb
+                viol = 1.1 * viol_lb
                 d = 1
             else:
-                viol = viol_ub
+                viol = 1.1 * viol_ub
                 d = -1
             alpha = max(alpha, viol)
             if viol < alpha_tol:
