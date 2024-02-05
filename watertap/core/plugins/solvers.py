@@ -145,8 +145,9 @@ class IpoptWaterTAP(IPOPT):
             if nlp.nnz_hessian_lag() == 0:
                 if "alpha_for_y" not in self.options:
                     self.options["alpha_for_y"] = "bound-mult"
-            # run Constraint Consensus Algorithm
-            run_ccs(self._model, nlp, self._tee)
+            # run Constraint Consensus Algorithm to refine
+            # the initial point given by the user
+            run_cca(self._model, nlp, self._tee)
         try:
             # this creates the NL file, among other things
             return super()._presolve(*args, **kwds)
@@ -222,7 +223,15 @@ from pyomo.environ import ComponentMap
 from pyomo.contrib.incidence_analysis import get_incident_variables, IncidenceMethod
 
 
-def run_ccs(model, nlp, tee):
+def run_cca(model, nlp, tee):
+    """
+    Constraint Consensus Algorithm: Attempts to refine an initial point.
+
+    This implementation mostly reflects the following reference:
+        Chinneck, John W. "The constraint consensus method for finding approximately
+        feasible points in nonlinear programs." INFORMS journal on computing 16.3
+        (2004): 255-265.
+    """
 
     start_time = time.time()
 
@@ -249,13 +258,7 @@ def run_ccs(model, nlp, tee):
     lb = nlp.primals_lb()
     ub = nlp.primals_ub()
 
-    # print(f"lb: {lb}")
-    # print(f"ub: {ub}")
-
     x = nlp.init_primals().copy()
-
-    if np.any((ub - lb) < 1e-10):
-        raise ValueError("Bounds too close")
 
     ineq_lb = nlp.ineq_lb()
     ineq_ub = nlp.ineq_ub()
@@ -275,9 +278,6 @@ def run_ccs(model, nlp, tee):
 
         eq_val = nlp.evaluate_eq_constraints()
         ineq_val = nlp.evaluate_ineq_constraints()
-        # print(f"x: {x}")
-        # print(f"eq_val: {eq_val}")
-        # print(f"ineq_val: {ineq_val}")
 
         prior_primal_inf = primal_inf
         if eq_val.size == 0:
@@ -296,7 +296,7 @@ def run_ccs(model, nlp, tee):
         primal_inf = max(max_eq_resid, max_ineq_resid, max_bound_resid)
 
         # safeguard -- if we go off the rails
-        if prior_primal_inf*1e6 < primal_inf:
+        if prior_primal_inf * 1e6 < primal_inf:
             nlp.set_primals(x - t)
             break
 
@@ -396,18 +396,14 @@ def run_ccs(model, nlp, tee):
         for i, (s_i, n_i) in enumerate(zip(s, n)):
             if n_i != 0:
                 t[i] = s_i / n_i
-        # print(f"t: {t}")
 
         # step 5
         beta = np.linalg.norm(t)
         if beta <= beta_tol:
             break
 
-        # step 6
+        # step 6 & 7
         x = x + t
-
-        # # step 7 (project onto bounds)
-        # # NOTE: Putting bounds in algorithm with high vote
 
         # step 8
         continue
@@ -415,5 +411,3 @@ def run_ccs(model, nlp, tee):
     primals = nlp.get_primals()
     for idx, v in enumerate(nlp.vlist):
         v.set_value(primals[idx], skip_validation=True)
-    # for idx, c in enumerate(nlp.clist):
-    #    print(f"{c.name}, {c.slack()}")
