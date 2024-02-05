@@ -260,6 +260,7 @@ def run_ccs(model, nlp, tee):
     ineq_lb = nlp.ineq_lb()
     ineq_ub = nlp.ineq_ub()
 
+    primal_inf = np.inf
     alpha = np.nan
     beta = 0.0
 
@@ -278,9 +279,7 @@ def run_ccs(model, nlp, tee):
         # print(f"eq_val: {eq_val}")
         # print(f"ineq_val: {ineq_val}")
 
-        jac_eq = nlp.evaluate_jacobian_eq().tocsr()
-        jac_ineq = nlp.evaluate_jacobian_ineq().tocsr()
-
+        prior_primal_inf = primal_inf
         if eq_val.size == 0:
             max_eq_resid = 0
         else:
@@ -296,7 +295,14 @@ def run_ccs(model, nlp, tee):
         max_bound_resid = max(max_lb_resid, max_ub_resid)
         primal_inf = max(max_eq_resid, max_ineq_resid, max_bound_resid)
 
+        # safeguard -- if we go off the rails
+        if prior_primal_inf*1e6 < primal_inf:
+            nlp.set_primals(x - t)
+            break
+
         alpha = 0.0
+        jac_eq = nlp.evaluate_jacobian_eq().tocsr()
+        jac_ineq = nlp.evaluate_jacobian_ineq().tocsr()
 
         for idx, viol in enumerate(eq_val):
             if viol == 0.0:
