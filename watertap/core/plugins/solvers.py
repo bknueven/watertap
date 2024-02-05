@@ -402,27 +402,7 @@ def run_ccs(model, nlp, tee):
         x = x + t
 
         # # step 7 (project onto bounds)
-        # lb_mask = np.isfinite(lb) & (x + 5e-11 < lb)
-        # x[lb_mask] = lb[lb_mask] + 5e-11
-        # ub_mask = np.isfinite(ub) & (x - 5e-11 > lb)
-        # x[ub_mask] = ub[ub_mask] - 5e-11
-
-        # step 6 & 7
-        # TODO: could just calculate directly
-        # rho = 1
-        # while rho > 1e-10:
-        #    trial = x + rho * t
-        #    if np.any(trial > ub):
-        #        rho *= 0.5
-        #        continue
-        #    if np.any(trial < lb):
-        #        rho *= 0.5
-        #        continue
-        #    x = trial
-        #    break
-        # else:  # no break
-        #    # direction is too small
-        #    break
+        # # NOTE: Putting bounds in algorithm with high vote
 
         # step 8
         continue
