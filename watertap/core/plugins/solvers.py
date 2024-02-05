@@ -226,40 +226,36 @@ def run_ccs(model, nlp, tee):
 
     start_time = time.time()
 
-    alpha_tol = 100 / 1000
-    beta_tol = 10 / 1000
-    iter_limit = 100
+    alpha_tol = 1e-03
+    beta_tol = 1e-02
+    iter_limit = 30
 
     if tee:
-        print("Constraint Consensus Feasibility Pump")
+        print("Initialization Refinement: Constraint Consensus Algorithm")
         print(
             "{_iter:<6}"
             "{infeasibility:<16}"
             "{alpha:<11}"
             "{beta:<11}"
-            "{rho:<11}"
             "{time:<7}".format(
-                _iter="Iter",
-                infeasibility="Infeas",
-                alpha="alpha",
-                beta="beta",
-                rho="rho",
-                time="Time",
+                _iter="iter",
+                infeasibility="inf_pr",
+                alpha="inf_dist",
+                beta="step_size",
+                time="time",
             )
         )
 
     lb = nlp.primals_lb()
     ub = nlp.primals_ub()
 
+    # print(f"lb: {lb}")
+    # print(f"ub: {ub}")
+
     x = nlp.init_primals().copy()
 
     if np.any((ub - lb) < 1e-10):
         raise ValueError("Bounds too close")
-
-    # lb_mask = x + 5e-11 < lb
-    # x[lb_mask] = lb[lb_mask] + 5e-11
-    # ub_mask = x - 5e-11 > lb
-    # x[ub_mask] = ub[ub_mask] - 5e-11
 
     ineq_lb = nlp.ineq_lb()
     ineq_ub = nlp.ineq_ub()
@@ -271,14 +267,17 @@ def run_ccs(model, nlp, tee):
     for _iter in range(iter_limit):
         # step 1
         ninf = 0
-        n = np.zeros(len(x))
-        s = np.zeros(len(x))
+        n = np.zeros(len(x), dtype=int)
+        s = np.zeros(len(x), dtype=float)
 
         # step 2
         nlp.set_primals(x)
 
         eq_val = nlp.evaluate_eq_constraints()
         ineq_val = nlp.evaluate_ineq_constraints()
+        # print(f"x: {x}")
+        # print(f"eq_val: {eq_val}")
+        # print(f"ineq_val: {ineq_val}")
 
         jac_eq = nlp.evaluate_jacobian_eq().tocsr()
         jac_ineq = nlp.evaluate_jacobian_ineq().tocsr()
@@ -293,7 +292,10 @@ def run_ccs(model, nlp, tee):
             max_lb_resid = np.max(ineq_lb - ineq_val)
             max_ub_resid = np.max(ineq_val - ineq_ub)
             max_ineq_resid = max(max_lb_resid, max_ub_resid)
-        primal_inf = max(max_eq_resid, max_ineq_resid)
+        max_lb_resid = np.max(lb - x)
+        max_ub_resid = np.max(x - ub)
+        max_bound_resid = max(max_lb_resid, max_ub_resid)
+        primal_inf = max(max_eq_resid, max_ineq_resid, max_bound_resid)
 
         if tee:
             print(
@@ -301,13 +303,11 @@ def run_ccs(model, nlp, tee):
                 "{infeasibility:<16.7e}"
                 "{alpha:<11.2e}"
                 "{beta:<11.2e}"
-                "{rho:<11.2e}"
                 "{time:<7.3f}".format(
                     _iter=_iter,
                     infeasibility=primal_inf,
                     alpha=alpha,
                     beta=beta,
-                    rho=rho,
                     time=time.time() - start_time,
                 )
             )
@@ -332,11 +332,18 @@ def run_ccs(model, nlp, tee):
             s += row
 
         for idx, val in enumerate(ineq_val):
-            viol = max(ineq_lb[idx] - val, val - ineq_ub[idx])
-            if viol < 0.0:
+            viol_lb = ineq_lb[idx] - val
+            viol_ub = val - ineq_ub[idx]
+            if max(viol_lb, viol_ub) < 0.0:
                 # try to keep an interior point by making
                 # these inequalities strict
                 continue
+            if viol_lb > viol_ub:
+                viol = viol_lb
+                d = 1
+            else:
+                viol = viol_ub
+                d = -1
             #  viol * jac_eq[idx] / ||jac_eq[idx]||**2
             row = jac_ineq.getrow(idx)
             div = sum(val * val for val in row.data)
@@ -344,81 +351,99 @@ def run_ccs(model, nlp, tee):
             alpha = max(alpha, feas_dis)
             if feas_dis < alpha_tol:
                 continue
-            row *= -(viol / div)
+            row *= d * (viol / div)
             ninf += 1
             n[row.indices] += 1
             s += row
+
+        # turn single row-matrix
+        # back into array
+        if ninf > 0:
+            s = s.A[0]
+        for idx, val in enumerate(x):
+            viol_lb = lb[idx] - val
+            viol_ub = val - ub[idx]
+            if max(viol_lb, viol_ub) < 0.0:
+                # try to keep an interior point by making
+                # these inequalities strict
+                continue
+            if viol_lb > viol_ub:
+                viol = viol_lb
+                d = 1
+            else:
+                viol = viol_ub
+                d = -1
+            alpha = max(alpha, viol)
+            if viol < alpha_tol:
+                continue
+            ninf += 1
+            # bounds get the votes!
+            s[idx] += d * viol * (len(eq_val) + len(ineq_val))
+            n[idx] += 1 * (len(eq_val) + len(ineq_val))
 
         # step 3
         if ninf == 0:
             break
 
         # step 4
-        # turn single row-matrix
-        # back into array
-        s = s.A[0]
-        t = s / n
+        t = np.zeros(len(x), dtype=float)
+        for i, (s_i, n_i) in enumerate(zip(s, n)):
+            if n_i != 0:
+                t[i] = s_i / n_i
+        # print(f"t: {t}")
 
         # step 5
         beta = np.linalg.norm(t)
         if beta <= beta_tol:
             break
 
+        # step 6
+        x = x + t
+
+        # # step 7 (project onto bounds)
+        # lb_mask = np.isfinite(lb) & (x + 5e-11 < lb)
+        # x[lb_mask] = lb[lb_mask] + 5e-11
+        # ub_mask = np.isfinite(ub) & (x - 5e-11 > lb)
+        # x[ub_mask] = ub[ub_mask] - 5e-11
+
         # step 6 & 7
         # TODO: could just calculate directly
-        rho = 1
-        while rho > 1e-20:
-            trial = x + rho * t
-            if np.any(trial >= ub):
-                rho *= 0.5
-                continue
-            if np.any(trial <= lb):
-                rho *= 0.5
-                continue
-            x = trial
-            break
-        else:  # no break
-            # direction is too small
-            break
+        # rho = 1
+        # while rho > 1e-10:
+        #    trial = x + rho * t
+        #    if np.any(trial > ub):
+        #        rho *= 0.5
+        #        continue
+        #    if np.any(trial < lb):
+        #        rho *= 0.5
+        #        continue
+        #    x = trial
+        #    break
+        # else:  # no break
+        #    # direction is too small
+        #    break
 
         # step 8
         continue
 
     # TODO: better termination message
-    eq_val = nlp.evaluate_eq_constraints()
-    ineq_val = nlp.evaluate_ineq_constraints()
-
-    jac_eq = nlp.evaluate_jacobian_eq().tocsr()
-    jac_ineq = nlp.evaluate_jacobian_ineq().tocsr()
-
-    if eq_val.size == 0:
-        max_eq_resid = 0
-    else:
-        max_eq_resid = np.max(np.abs(eq_val))
-    if ineq_val.size == 0:
-        max_ineq_resid = 0
-    else:
-        max_lb_resid = np.max(ineq_lb - ineq_val)
-        max_ub_resid = np.max(ineq_val - ineq_ub)
-        max_ineq_resid = max(max_lb_resid, max_ub_resid)
-    primal_inf = max(max_eq_resid, max_ineq_resid)
-
     if tee:
         print(
             "{_iter:<6}"
             "{infeasibility:<16.7e}"
             "{alpha:<11.2e}"
             "{beta:<11.2e}"
-            "{rho:<11.2e}"
             "{time:<7.3f}".format(
-                _iter=_iter,
+                _iter=_iter + 1,
                 infeasibility=primal_inf,
                 alpha=alpha,
                 beta=beta,
-                rho=rho,
                 time=time.time() - start_time,
             )
         )
 
+    primals = nlp.get_primals()
     for idx, v in enumerate(nlp.vlist):
-        v.set_value(x[idx], skip_validation=True)
+        v.set_value(primals[idx], skip_validation=True)
+    # for idx, c in enumerate(nlp.clist):
+    #    print(f"{c.name}, {c.slack()}")
