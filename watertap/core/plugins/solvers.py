@@ -235,9 +235,9 @@ def run_cca(model, nlp, tee):
 
     start_time = time.time()
 
-    alpha_tol = 1e-03
-    beta_tol = 1e-02
-    iter_limit = 30
+    alpha_tol = 1e03
+    beta_tol = 1e02
+    iter_limit = 100
 
     if tee:
         print("Initialization Refinement: Constraint Consensus Algorithm")
@@ -304,6 +304,7 @@ def run_cca(model, nlp, tee):
         jac_eq = nlp.evaluate_jacobian_eq().tocsr()
         jac_ineq = nlp.evaluate_jacobian_ineq().tocsr()
 
+        alpha_tol_satisfied = True
         for idx, viol in enumerate(eq_val):
             if viol == 0.0:
                 # constraint is exactly satisfied
@@ -314,8 +315,9 @@ def run_cca(model, nlp, tee):
             div = sum(val * val for val in row.data)
             feas_dis = abs(viol / math.sqrt(div))
             alpha = max(alpha, feas_dis)
-            if feas_dis < alpha_tol:
-                continue
+            # always update constraints
+            if feas_dis > alpha_tol:
+                alpha_tol_satisfied = False
             row *= -(viol / div)
             ninf += 1
             n[row.indices] += 1
@@ -339,8 +341,9 @@ def run_cca(model, nlp, tee):
             div = sum(val * val for val in row.data)
             feas_dis = abs(viol / math.sqrt(div))
             alpha = max(alpha, feas_dis)
-            if feas_dis < alpha_tol:
-                continue
+            # always update inequality constraints
+            if feas_dis > alpha_tol:
+                alpha_tol_satisfied = False
             row *= d * (viol / div)
             ninf += 1
             n[row.indices] += 1
@@ -365,8 +368,9 @@ def run_cca(model, nlp, tee):
                 viol = 1.1 * viol_ub
                 d = -1
             alpha = max(alpha, viol)
-            if viol < alpha_tol:
-                continue
+            # always update variable bounds
+            if viol > alpha_tol:
+                alpha_tol_satisfied = False
             ninf += 1
             # bounds get the votes!
             s[idx] += d * viol * (len(eq_val) + len(ineq_val))
@@ -388,7 +392,7 @@ def run_cca(model, nlp, tee):
             )
 
         # step 3
-        if ninf == 0:
+        if alpha_tol_satisfied:
             break
 
         # step 4
