@@ -237,7 +237,7 @@ def run_cca(model, nlp, tee):
 
     alpha_tol = 1e03
     beta_tol = 1e02
-    iter_limit = 100
+    iter_limit = 1000
 
     if tee:
         print("Initialization Refinement: Constraint Consensus Algorithm")
