@@ -223,7 +223,7 @@ from pyomo.environ import ComponentMap
 from pyomo.contrib.incidence_analysis import get_incident_variables, IncidenceMethod
 
 
-def run_cca(model, nlp, tee):
+def run_cca(model, nlp, tee, tol=1e-08):
     """
     Constraint Consensus Algorithm: Attempts to refine an initial point.
 
@@ -235,9 +235,9 @@ def run_cca(model, nlp, tee):
 
     start_time = time.time()
 
-    alpha_tol = 1e03
-    beta_tol = 1e02
-    iter_limit = 1000
+    alpha_tol = 1e01
+    beta_tol = 1e00
+    iter_limit = 100
 
     if tee:
         print("Initialization Refinement: Constraint Consensus Algorithm")
@@ -279,6 +279,8 @@ def run_cca(model, nlp, tee):
         eq_val = nlp.evaluate_eq_constraints()
         ineq_val = nlp.evaluate_ineq_constraints()
 
+        more_votes = len(eq_val) + len(ineq_val)
+
         prior_primal_inf = primal_inf
         if eq_val.size == 0:
             max_eq_resid = 0
@@ -318,9 +320,13 @@ def run_cca(model, nlp, tee):
             # always update constraints
             if feas_dis > alpha_tol:
                 alpha_tol_satisfied = False
-            row *= -(viol / div)
+            if abs(viol) < tol:
+                n[row.indices] += more_votes
+                row *= -(viol / div) * more_votes
+            else:
+                n[row.indices] += 1
+                row *= -(viol / div)
             ninf += 1
-            n[row.indices] += 1
             s += row
 
         for idx, val in enumerate(ineq_val):
@@ -344,9 +350,13 @@ def run_cca(model, nlp, tee):
             # always update inequality constraints
             if feas_dis > alpha_tol:
                 alpha_tol_satisfied = False
-            row *= d * (viol / div)
+            if abs(viol) < tol:
+                n[row.indices] += more_votes
+                row *= d * (viol / div) * more_votes
+            else:
+                row *= d * (viol / div)
+                n[row.indices] += 1
             ninf += 1
-            n[row.indices] += 1
             s += row
 
         # turn single row-matrix
@@ -373,8 +383,13 @@ def run_cca(model, nlp, tee):
                 alpha_tol_satisfied = False
             ninf += 1
             # bounds get the votes!
-            s[idx] += d * viol * (len(eq_val) + len(ineq_val))
-            n[idx] += 1 * (len(eq_val) + len(ineq_val))
+            if abs(viol) > 0:
+                s[idx] += d * viol * more_votes * more_votes
+                n[idx] += more_votes * more_votes
+                print(f"violated bound of {viol} for var {nlp.vlist[idx].name}")
+            else:
+                s[idx] += d * viol * more_votes
+                n[idx] += more_votes
 
         if tee:
             print(
