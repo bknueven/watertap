@@ -45,11 +45,16 @@
 __author__ = "Adam Atia, Adi Bannady, Paul Vecchiarelli"
 
 import logging
+from pyomo.common.dependencies import attempt_import
+asyncio, asyncio_available = attempt_import("asyncio", defer_check=False)
+
+import random
 
 import sys
 import requests
 import json
 import time
+import copy
 
 from watertap.tools.oli_api.util.watertap_to_oli_helper_functions import get_oli_name
 
@@ -62,19 +67,18 @@ handler.setFormatter(formatter)
 _logger.addHandler(handler)
 _logger.setLevel(logging.DEBUG)
 
-
 class OLIApi:
     """
     A class to wrap OLI Cloud API calls and access functions for interfacing with WaterTAP.
     """
 
-    def __init__(self, credential_manager, interactive_mode=True, debug_level="INFO"):
+    def __init__(self, credential_manager, debug_level="INFO", interactive_mode=True):
         """
         Construct all necessary attributes for OLIApi class.
 
         :param credential_manager_class: class used to manage credentials
-        :param interactive_mode: enables direct interaction with user through prompts
         :param debug_level: string defining level of logging activity
+        :param interactive_mode: boolean enabling user interaction via prompts
         """
 
         self.credential_manager = credential_manager
@@ -122,7 +126,7 @@ class OLIApi:
                 headers=self.credential_manager.headers,
                 files={"files": file},
             )
-        dbs_file_id = _request_status_test(req, ["UPLOADED"])["file"][0]["id"]
+        dbs_file_id = self._request_status_test(req, ["UPLOADED"])["file"][0]["id"]
         if bool(dbs_file_id):
             if not keep_file:
                 self.session_dbs_files.append(dbs_file_id)
@@ -184,7 +188,6 @@ class OLIApi:
         else:
             dbs_file_inputs["modelName"] = "OLI_analysis"
 
-        # TODO: unknown bug where only "liquid1" phase is found in Flash analysis
         valid_phases = ["liquid1", "vapor", "solid", "liquid2"]
         if phases is not None:
             invalid_phases = [p for p in phases if p not in valid_phases]
@@ -219,7 +222,7 @@ class OLIApi:
             ),
             data=json.dumps(dbs_dict),
         )
-        dbs_file_id = _request_status_test(req, ["SUCCESS"])["data"]["id"]
+        dbs_file_id = self._request_status_test(req, ["SUCCESS"])["data"]["id"]
         if bool(dbs_file_id):
             if not keep_file:
                 self.session_dbs_files.append(dbs_file_id)
@@ -243,7 +246,7 @@ class OLIApi:
             f"{self.credential_manager.engine_url}/flash/history/{dbs_file_id}",
             headers=self.credential_manager.headers,
         )
-        flash_history = _request_status_test(req_flash_hist, None)["data"]
+        flash_history = self._request_status_test(req_flash_hist, None)["data"]
         dbs_file_summary = {
             "chemistry_info": chemistry_info,
             "flash_history": flash_history,
@@ -269,7 +272,7 @@ class OLIApi:
             headers=self.credential_manager.headers,
         )
         user_dbs_file_ids = [
-            k["fileId"] for k in _request_status_test(req, None)["data"]
+            k["fileId"] for k in self._request_status_test(req, None)["data"]
         ]
         _logger.info(f"{len(user_dbs_file_ids)} DBS files found for user")
         return user_dbs_file_ids
@@ -291,36 +294,21 @@ class OLIApi:
                 _logger.info(f"Deleting {dbs_file_id} ...")
                 req = requests.request(
                     "DELETE",
-                    f"{self.credential_manager._delete_dbs_url}{dbs_file_id}",
+                    f"{self.credential_manager._delete_dbs_url}/{dbs_file_id}",
                     headers=self.credential_manager.headers,
                 )
-                req = _request_status_test(req, ["SUCCESS"])
+                req = self._request_status_test(req, ["SUCCESS"])
                 if req["status"] == "SUCCESS":
                     _logger.info(f"File deleted")
 
-    def get_corrosion_contact_surfaces(self, dbs_file_id):
+    def _get_flash_mode(self, dbs_file_id, flash_method):
         """
-        Get list of valid contact surfaces for corrosion analysis, given a DBS file ID.
+        Set up arguments for OLI requests.
 
         :param dbs_file_id: string name for DBS file ID
+        :param flash_method: string indicating flash method
 
-        :return contact_surfaces: JSON results from OLI Cloud
         """
-
-        _logger.info(f"Checking chemistry info for {dbs_file_id} ...")
-        chemistry_info = self.call("chemistry-info", dbs_file_id)
-        framework = chemistry_info["result"]["thermodynamicFramework"]
-        if framework != "AQ":
-            raise RuntimeError(
-                f"Invalid thermodynamic framework for {dbs_file_id}. "
-                f"Corrosion analyzer requires 'Aqueous (H+ ion)', not {framework}."
-            )
-
-        _logger.info(f"Getting contact surfaces for {dbs_file_id} ...")
-        contact_surfaces = self.call("corrosion-contact-surface", dbs_file_id)
-        return contact_surfaces
-
-    def _get_flash_mode(self, dbs_file_id, flash_method, burst_job_tag=None):
 
         if not bool(flash_method):
             raise IOError("Specify a flash method to run.")
@@ -334,17 +322,12 @@ class OLIApi:
         if flash_method in valid_get_flashes:
             mode = "GET"
             url = f"{base_url}/file/{dbs_file_id}/{flash_method}"
-
         elif flash_method in valid_post_flashes:
             mode = "POST"
             url = f"{base_url}/flash/{dbs_file_id}/{flash_method}"
             headers = self.credential_manager.update_headers(
                 {"Content-Type": "application/json"},
             )
-            if burst_job_tag is not None:
-                url = "{}?{}".format(
-                    url, "burst={}_{}".format("watertap_burst", burst_job_tag)
-                )
         else:
             valid_flashes = [*valid_get_flashes, *valid_post_flashes]
             raise RuntimeError(
@@ -353,21 +336,9 @@ class OLIApi:
             )
         return mode, url, headers
 
-    def process_request_list(self, requests, **kwargs):
-        """
-        Process a list of flash calculation requests for OLI.
-
-        :param requests: list of request dictionaries containing flash_method, dbs_file_id, and json_input
-        """
-
-        _logger.info("Collecting requested samples in serial mode ...")
-        result_list = []
+    def process_request_list(self, requests):
         acquire_timer = time.time()
-        for idx, request in enumerate(requests):
-            _logger.info(f"Submitting sample #{idx+1} of {len(requests)} ...")
-            result = self.call(**request)
-            result["submitted_requests"] = request
-            result_list.append(result)
+        result_list = [self.call(**request) for request in requests]
         acquire_time = time.time() - acquire_timer
         num_samples = len(requests)
         _logger.info(
@@ -384,13 +355,12 @@ class OLIApi:
         input_params=None,
         poll_time=0.5,
         max_request=100,
-        **kwargs,
     ):
         """
         Make a call to the OLI Cloud API.
 
         :param flash_method: string indicating flash method
-        :param dbs_file_id: string indicating DBS file
+        :param dbs_file_id: string name for DBS file ID
         :param input_params: dictionary for flash calculation inputs
         :param poll_time: seconds between each poll
         :param max_request: maximum number of times to try request before failure
@@ -402,76 +372,78 @@ class OLIApi:
         req = requests.request(
             mode, url, headers=headers, data=json.dumps(input_params)
         )
-        req_json = _request_status_test(req, ["SUCCESS"])
-        result_link = _get_result_link(req_json)
-        result = _poll_result_link(result_link, headers, max_request, poll_time)
+        req_json = self._request_status_test(req, ["SUCCESS"])
+        result_link = self._get_result_link(req_json)
+        result = self._poll_result_link(result_link, headers, max_request, poll_time)
+        result["submitted_requests"] = {"flash_method": flash_method,
+                                        "dbs_file_id": dbs_file_id,
+                                        "input_params": input_params}
         return result
 
-def _get_result_link(req_json):
-    """
-    Get result link from OLI Cloud request.
+    def _get_result_link(self, req_json):
+        """
+        Get result link from OLI Cloud request.
 
-    :param req_json: JSON containing result of request
+        :param req_json: JSON containing result of request
 
-    :return result_link: string indicating URL to access call results
-    """
+        :return result_link: string indicating URL to access call results
+        """
 
-    if "data" in req_json:
-        if "status" in req_json["data"]:
-            if req_json["data"]["status"] in ["IN QUEUE", "IN PROGRESS"]:
+        result_link = ""
+        if "data" in req_json:
+            if "status" in req_json["data"]:
+                if req_json["data"]["status"] in ["IN QUEUE", "IN PROGRESS"]:
+                    if "resultsLink" in req_json["data"]:
+                        result_link = req_json["data"]["resultsLink"]
                 if "resultsLink" in req_json["data"]:
                     result_link = req_json["data"]["resultsLink"]
-            if "resultsLink" in req_json["data"]:
-                result_link = req_json["data"]["resultsLink"]
-    if not result_link:
-        raise RuntimeError(f"Failed to get 'resultsLink'. Response: {req.json()}")
-    return result_link
+        if not result_link:
+            _logger.warning(f"Failed to get 'resultsLink'. Response: {req.json()}")
+        return result_link
 
+    def _request_status_test(self, req, target_keys):
+        """
+        Check result of OLI request (except async).
 
-def _request_status_test(req, target_keys):
-    """
-    Check result of OLI request (except async).
+        :param req: response object
+        :param target_keys: list containing key(s) that indicate successful request
 
-    :param req: response object
-    :param target_keys: list containing key(s) that indicate successful request
+        :return req_json: response object converted to JSON
+        """
 
-    :return req_json: response object converted to JSON
-    """
+        req_json = req.json()
+        func_name = sys._getframe().f_back.f_code.co_name
+        _logger.debug(f"{func_name} response: {req_json}")
+        if req.status_code == 200:
+            if target_keys:
+                if "status" in req_json:
+                    if req_json["status"] in target_keys:
+                        return req_json
+            else:
+                return req_json
+        raise RuntimeError(f"Failure in {func_name}. Response: {req_json}")
 
-    req_json = req.json()
-    func_name = sys._getframe().f_back.f_code.co_name
-    _logger.debug(f"{func_name} response: {req_json}")
-    if req.status_code == 200:
-        if target_keys:
-            if "status" in req_json:
-                if req_json["status"] in target_keys:
-                    return req_json
-        else:
-            return req_json
-    raise RuntimeError(f"Failure in {func_name}. Response: {req_json}")
+    def _poll_result_link(self, result_link, headers, max_request, poll_time):
+        """
+        Poll result link from OLI Flash calculation request.
 
+        :param result_link: string indicating URL to access call results
+        :param headers: dictionary for OLI Cloud headers
+        :param max_request: integer for number of requests before poll limit error
+        :param poll_time: float for time in between poll requests
 
-def _poll_result_link(result_link, headers, max_request, poll_time):
-    """
-    Poll result link from OLI Flash calculation request.
+        return result: JSON containing results from successful Flash calculation
+        """
 
-    :param result_link: string indicating URL to access call results
-    :param headers: dictionary for OLI Cloud headers
-    :param max_request: integer for number of requests before poll limit error
-    :param poll_time: float for time in between poll requests
-
-    return result: JSON containing results from successful Flash calculation
-    """
-
-    for _ in range(max_request):
-        time.sleep(poll_time)
-        result_req = requests.get(result_link, headers=headers)
-        result_req = _request_status_test(
-            result_req, ["IN QUEUE", "IN PROGRESS", "PROCESSED", "FAILED"]
-        )
-        _logger.info(f"Polling result link: {result_req['status']}")
-        if result_req["status"] in ["PROCESSED", "FAILED"]:
-            if result_req["data"]:
-                result = result_req["data"]
-                return result
-    raise RuntimeError("Poll limit exceeded.")
+        for _ in range(max_request):
+            time.sleep(poll_time)
+            result_req = requests.get(result_link, headers=headers)
+            result_req = self._request_status_test(
+                result_req, ["IN QUEUE", "IN PROGRESS", "PROCESSED", "FAILED"]
+            )
+            _logger.info(f"Polling result link: {result_req['status']}")
+            if result_req["status"] in ["PROCESSED", "FAILED"]:
+                if result_req["data"]:
+                    result = result_req["data"]
+                    return result
+        raise RuntimeError("Poll limit exceeded.")

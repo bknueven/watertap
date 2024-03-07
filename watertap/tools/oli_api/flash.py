@@ -64,6 +64,8 @@ from watertap.tools.oli_api.util.fixed_keys_dict import (
     output_unit_set,
 )
 
+from watertap.tools.oli_api.client import OLIApi
+
 _logger = logging.getLogger(__name__)
 handler = logging.StreamHandler()
 formatter = logging.Formatter(
@@ -97,7 +99,6 @@ class Flash:
         self.input_unit_set = input_unit_set
         self.output_unit_set = output_unit_set
         self.relative_inflows = relative_inflows
-
         if debug_level == "INFO":
             _logger.setLevel(logging.INFO)
         else:
@@ -845,10 +846,10 @@ class Flash:
         dbs_file_id,
         json_input,
         survey=None,
-        file_name=None,
-        # max_concurrent_processes=1000,
-        # burst_job_tag=None,
-        # batch_size=None,
+        file_name="",
+        max_concurrent_processes=1000,
+        burst_job_tag=None,
+        batch_size=None,
     ):
         """
         Conduct single point analysis with initial JSON input, or conduct a survey on that input.
@@ -863,15 +864,15 @@ class Flash:
         :return processed_requests: results from processed OLI flash requests
         """
 
-        if flash_method == "corrosion-rates":
-            # check if DBS file is using AQ thermodynamic framework
-            oliapi_instance.get_corrosion_contact_surfaces(dbs_file_id)
-
         if self.relative_inflows:
             _logger.info(
                 f"relative_inflows={self.relative_inflows},"
                 + " surveys will add values to initial state"
             )
+
+        if flash_method == "corrosion-rates":
+            # check if DBS file is using AQ thermodynamic framework
+            oliapi_instance.get_corrosion_contact_surfaces(dbs_file_id)
 
         if survey is None:
             survey = {}
@@ -895,14 +896,15 @@ class Flash:
                     ),
                 }
             )
+        _logger.info(f"Processing {len(requests_to_process)} OLIApi requests ...")
         processed_requests = oliapi_instance.process_request_list(
             requests_to_process,
-            # burst_job_tag=burst_job_tag,
-            # max_concurrent_processes=max_concurrent_processes,
-            # batch_size=batch_size,
+            #burst_job_tag=burst_job_tag,
+            #max_concurrent_processes=max_concurrent_processes,
+            #batch_size=batch_size,
         )
         _logger.info("Completed running flash calculations")
-        result = flatten_results(processed_requests)
+        result = _flatten_results(processed_requests)
         if file_name:
             write_output(result, file_name)
         return result
@@ -952,7 +954,7 @@ class Flash:
                         else:
                             param["value"] = v[index]
                         _logger.info(
-                            f"Updating {k} for sample #{index} clone: new value = {param['value']}"
+                            f"Updating {k} for sample #{index+1} clone: new value = {param['value']}"
                         )
             else:
                 if k in d:
@@ -1020,8 +1022,14 @@ class Flash:
             write_output(inflows, file_name)
         return inflows
 
+def _flatten_results(processed_requests):
+    """
+    Flatten OLI output.
 
-def flatten_results(processed_requests):
+    :param processed_requests: list of requests processed by OLIApi
+
+    :return output_dict: flattened dictionary containing all inputs and outputs from OLI flash calls
+    """
 
     _logger.info("Flattening OLI stream output ... ")
 
@@ -1079,6 +1087,8 @@ def flatten_results(processed_requests):
                 if "unit" in values:
                     unit = values["unit"] if values["unit"] else "dimensionless"
                     extracted_values.update({"units": unit})
+                elif "fullVersion" in values:
+                    extracted_values = {"fullVersion": values["fullVersion"]}
             elif all(k in values for k in ["found", "phase"]):
                 extracted_values = values
             else:
@@ -1185,16 +1195,12 @@ def write_output(content, file_name):
 
     :param content: dictionary of content to write
     :param file_name: string for name of file to write
-
-    :param file_path: string for full path of written file
     """
 
     _logger.info(f"Saving content to {file_name}")
     with open(file_name, "w", encoding="utf-8") as f:
         json.dump(content, f)
     _logger.info("Save complete")
-    file_path = Path(file_name).resolve()
-    return file_path
 
 
 def build_survey(survey_arrays, get_oli_names=False, file_name=None, mesh_grid=True):
