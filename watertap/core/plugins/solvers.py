@@ -13,9 +13,16 @@
 import logging
 
 import pyomo.environ as pyo
+from pyomo.common.collections import Bunch
 from pyomo.core.base.block import _BlockData
 from pyomo.core.kernel.block import IBlock
 from pyomo.solvers.plugins.solvers.IPOPT import IPOPT
+from pyomo.contrib.fbbt.fbbt import fbbt
+from pyomo.contrib.solver.util import get_objective
+
+from pyomo.opt.results.results_ import SolverResults
+from pyomo.opt.results.solution import Solution, SolutionStatus
+from pyomo.opt.results.solver import TerminationCondition, SolverStatus
 
 import idaes.core.util.scaling as iscale
 from idaes.core.util.scaling import (
@@ -37,10 +44,6 @@ def _pyomo_nl_writer_logger_filter(record):
     return True
 
 
-@pyo.SolverFactory.register(
-    "ipopt-watertap",
-    doc="The Ipopt NLP solver, with user-based variable and automatic Jacobian constraint scaling",
-)
 class IpoptWaterTAP(IPOPT):
     def __init__(self, **kwds):
         kwds["name"] = "ipopt-watertap"
@@ -200,6 +203,139 @@ class IpoptWaterTAP(IPOPT):
                 )
             return False
         return True
+
+
+@pyo.SolverFactory.register(
+    "ipopt-watertap",
+    doc="The Ipopt NLP solver, with user-based variable and automatic Jacobian constraint scaling",
+)
+class IpoptWaterTAPFBBT:
+
+    _base_solver = IpoptWaterTAP
+
+    def __init__(self, **kwds):
+
+        kwds["name"] = "ipopt-watertap-fbbt"
+        self.options = Bunch()
+        if kwds.get("options") is not None:
+            for key in kwds["options"]:
+                setattr(self.options, key, kwds["options"][key])
+
+        self._bound_cache = pyo.ComponentMap()
+
+    def executable(self):
+        return self._base_solver().executable()
+
+    def _cache_bounds(self, blk):
+        self._bound_cache = pyo.ComponentMap()
+        for v in blk.component_data_objects(pyo.Var, active=True, descend_into=True):
+            # we could hit a variable more
+            # than once because of References
+            if v in self._bound_cache:
+                continue
+            self._bound_cache[v] = v.bounds
+
+    def _restore_bounds(self):
+        for v, bounds in self._bound_cache.items():
+            v.bounds = bounds
+        del self._bound_cache
+
+    def _cache_active_constraints(self, blk):
+        self._active_constraint_cache = []
+        for c in blk.component_data_objects(
+            pyo.Constraint, active=True, descend_into=True
+        ):
+            self._active_constraint_cache.append(c)
+
+    def _restore_active_constraints(self):
+        for c in self._active_constraint_cache:
+            c.activate()
+
+    def _fbbt(self, blk):
+        # it = IntervalTightener()
+        # it.config.feasibility_tol = self.options["constr_viol_tol"]
+        # it.config.deactivate_satisfied_constraints = True
+        # it.set_instance(self._model)
+        # it.perform_fbbt(self._model)
+        fbbt(
+            blk,
+            feasibility_tol=self.options.get("constr_viol_tol", 1e-8),
+            deactivate_satisfied_constraints=False,
+        )
+        all_fixed = True
+        bound_relax_factor = 1e-08
+        for v, (lb, ub) in self._bound_cache.items():
+            if v.lb == v.ub:
+                v.value = v.lb
+            else:
+                all_fixed = False
+            if lb is None:
+                if v.lb is not None:
+                    v.lb = v.lb - bound_relax_factor
+            else:
+                v.lb = max(lb, v.lb - bound_relax_factor)
+            if ub is None:
+                if v.ub is not None:
+                    v.ub = v.ub + bound_relax_factor
+            else:
+                v.ub = min(ub, v.ub + bound_relax_factor)
+        return all_fixed
+
+    def solve(self, blk, *args, **kwds):
+
+        solver = self._base_solver()
+
+        for k, v in self.options.items():
+            solver.options[k] = v
+
+        self._cache_bounds(blk)
+        self._cache_active_constraints(blk)
+
+        all_fixed = self._fbbt(blk)
+
+        if all_fixed:
+            obj = get_objective(blk)
+
+            results = SolverResults()
+
+            results.solver.status = SolverStatus.ok
+            results.solver.termination_condition = TerminationCondition.optimal
+            results.solver.termination_message = "FBBT solved the model"
+            results.solver.message = "Solution found with interval arithmetic"
+
+            if obj is None:
+                results.problem.lower_bound = 0.0
+                results.problem.upper_bound = 0.0
+            else:
+                results.problem.lower_bound = pyo.value(obj)
+                results.problem.upper_bound = pyo.value(obj)
+
+            solution = Solution()
+            solution.status = SolutionStatus.optimal
+            solution.gap = 0.0
+
+            for v in self._bound_cache:
+                solution.variable[v.name] = {"Value": v.value}
+            if hasattr(blk, "dual") and blk.dual.import_enabled():
+                _log.warning("Cannot get duals for model solved by FBBT")
+            if hasattr(blk, "rc") and blk.rc.import_enabled():
+                _log.warning("Cannot get reduced costs for model solved by FBBT")
+            if hasattr(blk, "slack") and blk.slack.import_enabled():
+                for c in self._active_constraint_cache:
+                    solution.constraint[c.name] = {"Slack": 0}
+
+            results.solution.insert(solution)
+
+        else:  # FBBT could not solve it
+            try:
+                results = solver.solve(blk, *args, **kwds)
+            except:
+                results = None
+
+        self._restore_active_constraints()
+        self._restore_bounds()
+
+        return results
 
 
 ## reconfigure IDAES to use the ipopt-watertap solver
