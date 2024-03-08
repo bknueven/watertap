@@ -265,7 +265,7 @@ class IpoptWaterTAPFBBT:
         all_fixed = True
         bound_relax_factor = 1e-08
         for v, (lb, ub) in self._bound_cache.items():
-            if v.lb == v.ub:
+            if v.lb is not None and v.lb == v.ub:
                 v.value = v.lb
             else:
                 all_fixed = False
