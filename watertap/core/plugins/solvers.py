@@ -259,11 +259,11 @@ class IpoptWaterTAPFBBT:
         # it.perform_fbbt(self._model)
         fbbt(
             blk,
-            feasibility_tol=self.options.get("constr_viol_tol", 1e-6),
+            feasibility_tol=self.options.get("constr_viol_tol", 1e-8),
             deactivate_satisfied_constraints=False,
         )
         all_fixed = True
-        bound_relax_factor = 1e-6
+        bound_relax_factor = 1e-08
         for v, (lb, ub) in self._bound_cache.items():
             if v.lb == v.ub:
                 v.value = v.lb
