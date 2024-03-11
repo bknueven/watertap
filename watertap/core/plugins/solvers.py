@@ -322,11 +322,7 @@ class IpoptWaterTAPFBBT:
             results.solution.insert(solution)
 
         else:  # FBBT could not solve it
-            try:
-                results = solver.solve(blk, *args, **kwds)
-            except:
-                results = SolverResults()
-                results.solver.status = SolverStatus.error
+            results = solver.solve(blk, *args, **kwds)
 
         self._restore_active_constraints()
         self._restore_bounds()
