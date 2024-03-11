@@ -252,11 +252,6 @@ class IpoptWaterTAPFBBT:
             c.activate()
 
     def _fbbt(self, blk):
-        # it = IntervalTightener()
-        # it.config.feasibility_tol = self.options["constr_viol_tol"]
-        # it.config.deactivate_satisfied_constraints = True
-        # it.set_instance(self._model)
-        # it.perform_fbbt(self._model)
         fbbt(
             blk,
             feasibility_tol=1e-6,
