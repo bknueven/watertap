@@ -21,7 +21,11 @@ from idaes.core.util.scaling import (
     constraints_with_scale_factor_generator,
 )
 from idaes.core.solvers import get_solver
-from watertap.core.plugins.solvers import IpoptWaterTAP, _pyomo_nl_writer_log
+from watertap.core.plugins.solvers import (
+    IpoptWaterTAPFBBT,
+    IpoptWaterTAP,
+    _pyomo_nl_writer_log,
+)
 
 
 class TestIpoptWaterTAP:
@@ -60,7 +64,7 @@ class TestIpoptWaterTAP:
 
     @pytest.fixture(scope="class")
     def s(self):
-        return pyo.SolverFactory("ipopt-watertap")
+        return IpoptWaterTAP()
 
     @pytest.mark.unit
     def test_pyomo_registration(self, s):
@@ -68,7 +72,7 @@ class TestIpoptWaterTAP:
 
     @pytest.mark.unit
     def test_idaes_registration(self):
-        assert get_solver().__class__ is IpoptWaterTAP
+        assert get_solver().__class__ is IpoptWaterTAPFBBT
 
     @pytest.mark.unit
     def test_presolve_scales_constraints_and_relaxes_bounds(self, m, s):
