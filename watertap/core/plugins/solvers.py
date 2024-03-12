@@ -257,7 +257,7 @@ class IpoptWaterTAPFBBT:
         try:
             fbbt(
                 blk,
-                feasibility_tol=1e-8,
+                feasibility_tol=1e-6,
                 deactivate_satisfied_constraints=False,
             )
         except:
