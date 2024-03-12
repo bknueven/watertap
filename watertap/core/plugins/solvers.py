@@ -266,7 +266,7 @@ class IpoptWaterTAPFBBT:
             self._restore_bounds()
             raise
         all_fixed = True
-        bound_relax_factor = 1e-6
+        bound_relax_factor = 1e-4
         for v, (lb, ub) in self._bound_cache.items():
             if v.lb is not None and v.lb == v.ub:
                 v.value = v.lb
@@ -275,20 +275,21 @@ class IpoptWaterTAPFBBT:
             if v.value is None:
                 if v.lb is not None and v.ub is not None:
                     v.value = (v.lb + v.ub) / 2.0
+            sf = get_scaling_factor(v, default=1)
             if lb is None:
                 if v.lb is not None:
                     if v.value is None or v.value < v.lb:
                         v.value = v.lb
-                    v.lb = v.lb - bound_relax_factor
+                    v.lb = _relax_lower_bound(v.lb, sf, bound_relax_factor)
             else:
-                v.lb = max(lb, v.lb - bound_relax_factor)
+                v.lb = max(lb, _relax_lower_bound(v.lb, sf, bound_relax_factor))
             if ub is None:
                 if v.ub is not None:
                     if v.value is None or v.value > v.ub:
                         v.value = v.ub
-                    v.ub = v.ub + bound_relax_factor
+                    v.ub = _relax_upper_bound(v.ub, sf, bound_relax_factor)
             else:
-                v.ub = min(ub, v.ub + bound_relax_factor)
+                v.ub = min(ub, _relax_upper_bound(v.ub, sf, bound_relax_factor))
 
         return all_fixed
 
@@ -303,6 +304,7 @@ class IpoptWaterTAPFBBT:
         self._cache_active_constraints(blk)
 
         try:
+            # if True:
             all_fixed = self._fbbt(blk)
         except InfeasibleConstraintException:
             results = SolverResults()
@@ -355,6 +357,16 @@ class IpoptWaterTAPFBBT:
         self._restore_bounds()
 
         return results
+
+
+def _relax_lower_bound(lb, sf, bound_relax_factor):
+    # return ((lb * sf - bound_relax_factor * max(1, abs(lb * sf))) / sf)
+    return lb - bound_relax_factor
+
+
+def _relax_upper_bound(ub, sf, bound_relax_factor):
+    # return ((ub * sf + bound_relax_factor * max(1, abs(ub * sf))) / sf)
+    return ub + bound_relax_factor
 
 
 ## reconfigure IDAES to use the ipopt-watertap solver
