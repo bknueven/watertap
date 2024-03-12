@@ -212,6 +212,7 @@ class IpoptWaterTAP(IPOPT):
 class IpoptWaterTAPFBBT:
 
     _base_solver = IpoptWaterTAP
+    name = "ipopt-watertap"
 
     def __init__(self, **kwds):
 
@@ -252,11 +253,17 @@ class IpoptWaterTAPFBBT:
             c.activate()
 
     def _fbbt(self, blk):
-        fbbt(
-            blk,
-            feasibility_tol=1e-6,
-            deactivate_satisfied_constraints=False,
-        )
+        try:
+            fbbt(
+                blk,
+                feasibility_tol=1e-8,
+                deactivate_satisfied_constraints=False,
+            )
+        except:
+            # cleanup before raising
+            self._restore_active_constraints()
+            self._restore_bounds()
+            raise
         all_fixed = True
         bound_relax_factor = 1e-6
         for v, (lb, ub) in self._bound_cache.items():
@@ -264,16 +271,24 @@ class IpoptWaterTAPFBBT:
                 v.value = v.lb
             else:
                 all_fixed = False
+            if v.value is None:
+                if v.lb is not None and v.ub is not None:
+                    v.value = (v.lb + v.ub) / 2.0
             if lb is None:
                 if v.lb is not None:
+                    if v.value is None or v.value < v.lb:
+                        v.value = v.lb
                     v.lb = v.lb - bound_relax_factor
             else:
                 v.lb = max(lb, v.lb - bound_relax_factor)
             if ub is None:
                 if v.ub is not None:
+                    if v.value is None or v.value > v.ub:
+                        v.value = v.ub
                     v.ub = v.ub + bound_relax_factor
             else:
                 v.ub = min(ub, v.ub + bound_relax_factor)
+
         return all_fixed
 
     def solve(self, blk, *args, **kwds):
