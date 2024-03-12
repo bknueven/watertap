@@ -14,6 +14,7 @@ import logging
 
 import pyomo.environ as pyo
 from pyomo.common.collections import Bunch
+from pyomo.common.errors import InfeasibleConstraintException
 from pyomo.core.base.block import _BlockData
 from pyomo.core.kernel.block import IBlock
 from pyomo.solvers.plugins.solvers.IPOPT import IPOPT
@@ -301,7 +302,18 @@ class IpoptWaterTAPFBBT:
         self._cache_bounds(blk)
         self._cache_active_constraints(blk)
 
-        all_fixed = self._fbbt(blk)
+        try:
+            all_fixed = self._fbbt(blk)
+        except InfeasibleConstraintException:
+            results = SolverResults()
+            results.solver.status = SolverStatus.error
+            results.solver.termination_condition = TerminationCondition.infeasible
+            results.solver.termination_message = (
+                "FBBT determined the model was infeasible"
+            )
+            results.solver.message = "FBBT proved infeasibility subject to tolerances."
+
+            return results
 
         if all_fixed:
             obj = get_objective(blk)
