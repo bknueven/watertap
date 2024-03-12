@@ -14,7 +14,6 @@ import pytest
 import pyomo.environ as pyo
 import idaes.core.util.scaling as iscale
 
-from pyomo.common.errors import ApplicationError
 from idaes.core.util.scaling import (
     set_scaling_factor,
     constraints_with_scale_factor_generator,
@@ -133,7 +132,7 @@ class TestIpoptWaterTAP:
     def test_passthrough_negative(self, m, s):
         s.options["nlp_scaling_method"] = "gradient-based"
         s.options["ignore_variable_scaling"] = True
-        with pytest.raises(ApplicationError):
+        with pytest.raises(RuntimeError):
             pyo.assert_optimal_termination(s.solve(m, tee=True))
         del s.options["nlp_scaling_method"]
         del s.options["ignore_variable_scaling"]

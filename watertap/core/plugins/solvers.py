@@ -13,8 +13,10 @@
 import logging
 
 import pyomo.environ as pyo
+from pyomo.core.base.PyomoModel import ModelSolutions
 from pyomo.common.collections import Bunch
-from pyomo.solvers.plugins.solvers.IPOPT import IPOPT
+from pyomo.common.modeling import unique_component_name
+from pyomo.contrib.solver.util import get_objective
 
 import idaes.core.util.scaling as iscale
 from idaes.core.util.scaling import (
@@ -43,7 +45,7 @@ def _pyomo_nl_writer_logger_filter(record):
 class IpoptWaterTAP:
 
     name = "ipopt-watertap"
-    _base_solver = IPOPT
+    _base_solver = "ipopt_v2"
 
     def __init__(self, **kwds):
         kwds["name"] = self.name
@@ -53,16 +55,24 @@ class IpoptWaterTAP:
                 setattr(self.options, key, kwds["options"][key])
 
     def executable(self):
-        return self._base_solver().executable()
+        return pyo.SolverFactory(self._base_solver).config.executable.executable
 
     def solve(self, blk, *args, **kwds):
 
-        solver = self._base_solver()
+        solver = pyo.SolverFactory(self._base_solver)
         self._tee = kwds.get("tee", False)
+
+        if get_objective(blk) is None:
+            self._dummy_objective_name = unique_component_name(blk, "objective")
+            blk.add_component(self._dummy_objective_name, pyo.Objective(expr=0))
+        else:
+            self._dummy_objective_name = None
+
+        blk.solutions = ModelSolutions(blk)
 
         self._original_options = self.options
 
-        self.options = Bunch()
+        self.options = dict()
         self.options.update(self._original_options)
         self.options.update(kwds.pop("options", {}))
 
@@ -77,12 +87,11 @@ class IpoptWaterTAP:
             self.options["honor_original_bounds"] = "no"
 
         if not self._is_user_scaling():
-            for k, v in self.options.items():
-                solver.options[k] = v
+            kwds["options"] = self.options
             try:
                 return solver.solve(blk, *args, **kwds)
             finally:
-                self._options_cleanup()
+                self._cleanup_no_scale(blk)
 
         if self._tee:
             print(
@@ -99,15 +108,11 @@ class IpoptWaterTAP:
                 if "alpha_for_y" not in self.options:
                     self.options["alpha_for_y"] = "bound-mult"
 
-        # Now set the options to be used by Ipopt
-        # as we've popped off the above in _get_option
-        for k, v in self.options.items():
-            solver.options[k] = v
-
+        kwds["options"] = self.options
         try:
             return solver.solve(blk, *args, **kwds)
         finally:
-            self._cleanup()
+            self._cleanup(blk)
 
     def _scale_constraints(self, blk):
         # These options are typically available with gradient-scaling, and they
@@ -150,24 +155,26 @@ class IpoptWaterTAP:
                         "ipopt-watertap: halt_on_ampl_error=no, so continuing with optimization."
                     )
                 else:
-                    self._cleanup()
+                    self._cleanup(blk)
                     raise RuntimeError(
                         "Error in AMPL evaluation.\n"
                         "Run ipopt with halt_on_ampl_error=yes and symbolic_solver_labels=True to see the affected function."
                     )
             else:
                 print("Error in constraint_autoscale_large_jac")
-                self._cleanup()
+                self._cleanup(blk)
                 raise
 
         return nlp
 
-    def _options_cleanup(self):
+    def _cleanup_no_scale(self, blk):
+        if self._dummy_objective_name is not None:
+            blk.del_component(self._dummy_objective_name)
         self.options = self._original_options
         del self._original_options
 
-    def _cleanup(self):
-        self._options_cleanup()
+    def _cleanup(self, blk):
+        self._cleanup_no_scale(blk)
         self._reset_scaling_factors()
         _pyomo_nl_writer_log.removeFilter(_pyomo_nl_writer_logger_filter)
 
