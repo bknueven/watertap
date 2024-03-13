@@ -17,13 +17,8 @@ from pyomo.core.base.PyomoModel import ModelSolutions
 from pyomo.common.collections import Bunch
 from pyomo.common.modeling import unique_component_name
 from pyomo.contrib.solver.util import get_objective
+from pyomo.contrib.pynumero.interfaces.pyomo_nlp import PyomoNLP
 
-import idaes.core.util.scaling as iscale
-from idaes.core.util.scaling import (
-    get_scaling_factor,
-    set_scaling_factor,
-    unset_scaling_factor,
-)
 from idaes.logger import getLogger
 
 _log = getLogger("watertap.core")
@@ -86,20 +81,12 @@ class IpoptWaterTAP:
         if "honor_original_bounds" not in self.options:
             self.options["honor_original_bounds"] = "no"
 
-        if not self._is_user_scaling():
-            kwds["options"] = self.options
-            try:
-                return solver.solve(blk, *args, **kwds)
-            finally:
-                self._cleanup_no_scale(blk)
-
         if self._tee:
             print(
                 "ipopt-watertap: Ipopt with user variable scaling and IDAES jacobian constraint scaling"
             )
 
-        _pyomo_nl_writer_log.addFilter(_pyomo_nl_writer_logger_filter)
-        nlp = self._scale_constraints(blk)
+        nlp = PyomoNLP(blk)
 
         # set different default for `alpha_for_y` if this is an LP
         # see: https://coin-or.github.io/Ipopt/OPTIONS.html#OPT_alpha_for_y
@@ -114,59 +101,6 @@ class IpoptWaterTAP:
         finally:
             self._cleanup(blk)
 
-    def _scale_constraints(self, blk):
-        # These options are typically available with gradient-scaling, and they
-        # have corresponding options in the IDAES constraint_autoscale_large_jac
-        # function. Here we use their Ipopt names and default values, see
-        # https://coin-or.github.io/Ipopt/OPTIONS.html#OPT_NLP_Scaling
-        max_grad = self._get_option("nlp_scaling_max_gradient", 100)
-        min_scale = self._get_option("nlp_scaling_min_value", 1e-08)
-
-        # These options are custom for the IDAES constraint_autoscale_large_jac
-        # function. We expose them as solver options as this has become part
-        # of the solve process.
-        ignore_variable_scaling = self._get_option("ignore_variable_scaling", False)
-        ignore_constraint_scaling = self._get_option("ignore_constraint_scaling", False)
-
-        self._cache_scaling_factors(blk)
-
-        # NOTE: This function sets the scaling factors on the
-        #       constraints. Hence we cache the constraint scaling
-        #       factors and reset them to their original values
-        #       so that repeated calls to solve change the scaling
-        #       each time based on the initial values, just like in Ipopt.
-        try:
-            _, _, nlp = iscale.constraint_autoscale_large_jac(
-                blk,
-                ignore_constraint_scaling=ignore_constraint_scaling,
-                ignore_variable_scaling=ignore_variable_scaling,
-                max_grad=max_grad,
-                min_scale=min_scale,
-            )
-        except Exception as err:
-            nlp = None
-            if str(err) == "Error in AMPL evaluation":
-                print(
-                    "ipopt-watertap: Issue in AMPL function evaluation; Jacobian constraint scaling not applied."
-                )
-                halt_on_ampl_error = self.options.get("halt_on_ampl_error", "yes")
-                if halt_on_ampl_error == "no":
-                    print(
-                        "ipopt-watertap: halt_on_ampl_error=no, so continuing with optimization."
-                    )
-                else:
-                    self._cleanup(blk)
-                    raise RuntimeError(
-                        "Error in AMPL evaluation.\n"
-                        "Run ipopt with halt_on_ampl_error=yes and symbolic_solver_labels=True to see the affected function."
-                    )
-            else:
-                print("Error in constraint_autoscale_large_jac")
-                self._cleanup(blk)
-                raise
-
-        return nlp
-
     def _cleanup_no_scale(self, blk):
         if self._dummy_objective_name is not None:
             blk.del_component(self._dummy_objective_name)
@@ -175,47 +109,6 @@ class IpoptWaterTAP:
 
     def _cleanup(self, blk):
         self._cleanup_no_scale(blk)
-        self._reset_scaling_factors()
-        _pyomo_nl_writer_log.removeFilter(_pyomo_nl_writer_logger_filter)
-
-    def _cache_scaling_factors(self, blk):
-        self._scaling_cache = [
-            (c, get_scaling_factor(c))
-            for c in blk.component_data_objects(
-                pyo.Constraint, active=True, descend_into=True
-            )
-        ]
-
-    def _reset_scaling_factors(self):
-        for c, s in self._scaling_cache:
-            if s is None:
-                unset_scaling_factor(c)
-            else:
-                set_scaling_factor(c, s)
-        del self._scaling_cache
-
-    def _get_option(self, option_name, default_value):
-        # NOTE: The options are already copies of the original,
-        #       so it is safe to pop them so they don't get sent to Ipopt.
-        option_value = self.options.pop(option_name, None)
-        if option_value is None:
-            option_value = default_value
-        else:
-            if self._tee:
-                print(f"ipopt-watertap: {option_name}={option_value}")
-        return option_value
-
-    def _is_user_scaling(self):
-        if "nlp_scaling_method" not in self.options:
-            self.options["nlp_scaling_method"] = "user-scaling"
-        if self.options["nlp_scaling_method"] != "user-scaling":
-            if self._tee:
-                print(
-                    "The ipopt-watertap solver is designed to be run with user-scaling. "
-                    f"Ipopt with nlp_scaling_method={self.options['nlp_scaling_method']} will be used instead"
-                )
-            return False
-        return True
 
 
 ## reconfigure IDAES to use the ipopt-watertap solver
