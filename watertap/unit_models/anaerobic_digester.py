@@ -1026,7 +1026,9 @@ see reaction package for documentation.}""",
                 init_log.warning(
                     f"Trouble solving unit model {self.name}, trying one more time"
                 )
-                results = solverobj.solve(self, tee=slc.tee)
+                results = solverobj.solve(
+                    self, tee=slc.tee, options={"bound_push": 1.0}
+                )
         init_log.info_high(
             "Initialization Step 3 {}.".format(idaeslog.condition(results))
         )
