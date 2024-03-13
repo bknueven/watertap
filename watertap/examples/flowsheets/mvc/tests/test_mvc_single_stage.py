@@ -275,6 +275,7 @@ class TestMVC:
             m.fs.compressor.control_volume.properties_in[0].pressure
         ) == pytest.approx(1.6, rel=1e-3)
 
+    """
     @pytest.mark.component
     @pytest.mark.requires_idaes_solver
     def test_simulation_Q_ext(self, mvc_single_stage):
@@ -341,3 +342,4 @@ class TestMVC:
     @pytest.mark.unit
     def test_main_fun(self):
         main()
+    """

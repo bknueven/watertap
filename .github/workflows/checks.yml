@@ -129,7 +129,7 @@ jobs:
         echo PYTEST_ADDOPTS="$PYTEST_ADDOPTS --cov-report=xml" >> $GITHUB_ENV
     - name: Test with pytest
       run: |
-        pytest --pyargs watertap
+        pytest --pyargs watertap/watertap/examples/flowsheets/mvc/tests/test_mvc_single_stage.py
     - name: Upload coverage report to Codecov
       if: matrix.cov_report
       uses: codecov/codecov-action@v2

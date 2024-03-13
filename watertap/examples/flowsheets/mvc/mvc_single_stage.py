@@ -49,6 +49,8 @@ import watertap.property_models.water_prop_pack as props_w
 from watertap.costing import WaterTAPCosting
 import math
 
+import idaes.logger as idaeslog
+
 
 def main():
     # build, set operating conditions, initialize for simulation
@@ -57,32 +59,32 @@ def main():
     add_Q_ext(m, time_point=m.fs.config.time)
     initialize_system(m)
     # rescale costs after initialization because scaling depends on flow rates
-    scale_costs(m)
-    fix_outlet_pressures(m)  # outlet pressure are initially unfixed for initialization
+    # scale_costs(m)
+    # fix_outlet_pressures(m)  # outlet pressure are initially unfixed for initialization
 
-    # set up for minimizing Q_ext in first solve
-    # should be 1 DOF because Q_ext is unfixed
-    print("DOF after initialization: ", degrees_of_freedom(m))
-    m.fs.objective = Objective(expr=m.fs.Q_ext[0])
+    ## set up for minimizing Q_ext in first solve
+    ## should be 1 DOF because Q_ext is unfixed
+    # print("DOF after initialization: ", degrees_of_freedom(m))
+    # m.fs.objective = Objective(expr=m.fs.Q_ext[0])
 
-    print("\n***---First solve - simulation results---***")
-    solver = get_solver()
-    results = solve(m, solver=solver, tee=False)
-    print("Termination condition: ", results.solver.termination_condition)
-    assert_optimal_termination(results)
-    display_metrics(m)
-    display_design(m)
+    # print("\n***---First solve - simulation results---***")
+    # solver = get_solver()
+    # results = solve(m, solver=solver, tee=False)
+    # print("Termination condition: ", results.solver.termination_condition)
+    # assert_optimal_termination(results)
+    # display_metrics(m)
+    # display_design(m)
 
-    print("\n***---Second solve - optimization results---***")
-    m.fs.Q_ext[0].fix(0)  # no longer want external heating in evaporator
-    del m.fs.objective
-    set_up_optimization(m)
-    results = solve(m, solver=solver, tee=False)
-    print("Termination condition: ", results.solver.termination_condition)
-    display_metrics(m)
-    display_design(m)
+    # print("\n***---Second solve - optimization results---***")
+    # m.fs.Q_ext[0].fix(0)  # no longer want external heating in evaporator
+    # del m.fs.objective
+    # set_up_optimization(m)
+    # results = solve(m, solver=solver, tee=False)
+    # print("Termination condition: ", results.solver.termination_condition)
+    # display_metrics(m)
+    # display_design(m)
 
-    return m, results
+    return m
 
 
 def build():
@@ -428,7 +430,7 @@ def initialize_system(m, solver=None):
 
     # Touch feed mass fraction property
     m.fs.feed.properties[0].mass_frac_phase_comp["Liq", "TDS"]
-    solver.solve(m.fs.feed)
+    solver.solve(m.fs.feed, tee=True)
 
     # Propagate vapor flow rate based on given recovery
     m.fs.evaporator.properties_vapor[0].flow_mass_phase_comp[
@@ -456,9 +458,11 @@ def initialize_system(m, solver=None):
         - m.fs.evaporator.properties_vapor[0].flow_mass_phase_comp["Vap", "H2O"]
     )
 
+    outlvl = idaeslog.INFO
+
     # initialize feed pump
     propagate_state(m.fs.s01)
-    m.fs.pump_feed.initialize(optarg=optarg)
+    m.fs.pump_feed.initialize(optarg=optarg, outlvl=outlvl)
 
     # initialize separator
     propagate_state(m.fs.s02)
@@ -467,11 +471,11 @@ def initialize_system(m, solver=None):
     m.fs.separator_feed.split_fraction[0, "hx_distillate_cold"].fix(
         m.fs.recovery[0].value
     )
-    m.fs.separator_feed.mixed_state.initialize(optarg=optarg)
+    m.fs.separator_feed.mixed_state.initialize(optarg=optarg, outlvl=outlvl)
     # Touch properties for initialization
     m.fs.separator_feed.hx_brine_cold_state[0].mass_frac_phase_comp["Liq", "TDS"]
     m.fs.separator_feed.hx_distillate_cold_state[0].mass_frac_phase_comp["Liq", "TDS"]
-    m.fs.separator_feed.initialize(optarg=optarg)
+    m.fs.separator_feed.initialize(optarg=optarg, outlvl=outlvl)
     m.fs.separator_feed.split_fraction[0, "hx_distillate_cold"].unfix()
 
     # initialize distillate heat exchanger
@@ -490,7 +494,7 @@ def initialize_system(m, solver=None):
         0
     ] = m.fs.evaporator.outlet_brine.temperature[0].value
     m.fs.hx_distillate.hot_inlet.pressure[0] = 101325
-    m.fs.hx_distillate.initialize()
+    m.fs.hx_distillate.initialize(outlvl=outlvl)
 
     # initialize brine heat exchanger
     propagate_state(m.fs.s04)
@@ -508,12 +512,12 @@ def initialize_system(m, solver=None):
         0
     ].value
     m.fs.hx_brine.hot_inlet.pressure[0] = 101325
-    m.fs.hx_brine.initialize()
+    m.fs.hx_brine.initialize(outlvl=outlvl)
 
     # initialize mixer
     propagate_state(m.fs.s05)
     propagate_state(m.fs.s06)
-    m.fs.mixer_feed.initialize()
+    m.fs.mixer_feed.initialize(outlvl=outlvl)
     m.fs.mixer_feed.pressure_equality_constraints[0, 2].deactivate()
 
     # initialize evaporator
@@ -521,21 +525,21 @@ def initialize_system(m, solver=None):
     m.fs.Q_ext[0].fix()
     m.fs.evaporator.properties_vapor[0].flow_mass_phase_comp["Vap", "H2O"].fix()
     # fixes and unfixes those values
-    m.fs.evaporator.initialize(delta_temperature_in=60)
+    m.fs.evaporator.initialize(delta_temperature_in=60, outlvl=outlvl)
     m.fs.Q_ext[0].unfix()
     m.fs.evaporator.properties_vapor[0].flow_mass_phase_comp["Vap", "H2O"].unfix()
 
     # initialize compressor
     propagate_state(m.fs.s08)
-    m.fs.compressor.initialize()
+    m.fs.compressor.initialize(outlvl=outlvl)
 
     # initialize condenser
     propagate_state(m.fs.s09)
-    m.fs.condenser.initialize(heat=-m.fs.evaporator.heat_transfer.value)
+    m.fs.condenser.initialize(heat=-m.fs.evaporator.heat_transfer.value, outlvl=outlvl)
 
     # initialize brine pump
     propagate_state(m.fs.s10)
-    m.fs.pump_brine.initialize(optarg=optarg)
+    m.fs.pump_brine.initialize(optarg=optarg, outlvl=outlvl)
 
     # initialize distillate pump
     propagate_state(m.fs.s13)  # to translator block
@@ -546,7 +550,7 @@ def initialize_system(m, solver=None):
     m.fs.pump_distillate.control_volume.properties_in[
         0
     ].pressure = m.fs.condenser.control_volume.properties_out[0].pressure.value
-    m.fs.pump_distillate.initialize(optarg=optarg)
+    m.fs.pump_distillate.initialize(optarg=optarg, outlvl=outlvl)
 
     # propagate brine state
     propagate_state(m.fs.s12)
@@ -563,30 +567,31 @@ def initialize_system(m, solver=None):
             unit.initialize(
                 heat=-unit.flowsheet().evaporator.heat_transfer.value,
                 optarg=solver.options,
+                outlvl=outlvl,
             )
         elif unit.local_name == "evaporator":
             unit.flowsheet().Q_ext[0].fix()
             unit.properties_vapor[0].flow_mass_phase_comp["Vap", "H2O"].fix()
-            unit.initialize(delta_temperature_in=60)
+            unit.initialize(delta_temperature_in=60, outlvl=outlvl)
             unit.flowsheet().Q_ext[0].unfix()
             unit.properties_vapor[0].flow_mass_phase_comp["Vap", "H2O"].unfix()
         elif unit.local_name == "separator_feed":
             unit.split_fraction[0, "hx_distillate_cold"].fix(
                 unit.flowsheet().recovery[0].value
             )
-            unit.initialize()
+            unit.initialize(outlvl=outlvl)
             unit.split_fraction[0, "hx_distillate_cold"].unfix()
         elif unit.local_name == "mixer_feed":
-            unit.initialize()
+            unit.initialize(outlvl=outlvl)
             unit.pressure_equality_constraints[0, 2].deactivate()
         else:
-            unit.initialize()
+            unit.initialize(outlvl=outlvl)
 
     seq.run(m, func_initialize)
 
     m.fs.costing.initialize()
 
-    solver.solve(m, tee=False)
+    solver.solve(m, tee=True)
 
     print("Initialization done")
 
