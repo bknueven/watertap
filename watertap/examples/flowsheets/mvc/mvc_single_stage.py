@@ -557,8 +557,8 @@ def initialize_system(m, solver=None):
     propagate_state(m.fs.s16)
 
     seq = SequentialDecomposition(tear_solver="cbc")
-    seq.options.log_info = False
-    seq.options.iterLim = 1
+    seq.options.log_info = True
+    seq.options.iterLim = 5
 
     def func_initialize(unit):
         if unit.local_name == "feed":
