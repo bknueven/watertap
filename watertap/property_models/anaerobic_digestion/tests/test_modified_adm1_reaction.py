@@ -50,6 +50,7 @@ from watertap.property_models.anaerobic_digestion.modified_adm1_reactions import
     ModifiedADM1ReactionBlock,
 )
 from idaes.core.util.testing import initialization_tester
+import idaes.logger as idaeslog
 
 # -----------------------------------------------------------------------------
 # Get default solver for testing
@@ -549,7 +550,7 @@ class TestReactionBlock(object):
 
     @pytest.mark.component
     def test_initialize(self, model):
-        assert model.rxns.initialize() is None
+        assert model.rxns.initialize(outlvl=idaeslog.DEBUG) is None
 
     @pytest.mark.unit
     def check_units(self, model):
@@ -646,7 +647,7 @@ class TestReactor:
     @pytest.mark.component
     @pytest.mark.requires_idaes_solver
     def test_initialize(self, model):
-        initialization_tester(model)
+        initialization_tester(model, outlvl=idaeslog.DEBUG)
 
     @pytest.mark.solver
     @pytest.mark.skipif(solver is None, reason="Solver not available")
@@ -654,7 +655,7 @@ class TestReactor:
     @pytest.mark.requires_idaes_solver
     def test_solve(self, model):
         solver = get_solver()
-        results = solver.solve(model)
+        results = solver.solve(model, tee=True)
 
         assert_optimal_termination(results)
 
