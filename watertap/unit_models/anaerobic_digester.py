@@ -1027,7 +1027,7 @@ see reaction package for documentation.}""",
                     f"Trouble solving unit model {self.name}, trying one more time"
                 )
                 results = solverobj.solve(
-                    self, tee=slc.tee, options={"bound_push": 1.0}
+                    self, tee=slc.tee, options={"ma27_pivtol": 0.1}
                 )
         init_log.info_high(
             "Initialization Step 3 {}.".format(idaeslog.condition(results))
