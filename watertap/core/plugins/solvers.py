@@ -257,7 +257,7 @@ class IpoptWaterTAPFBBT:
         try:
             fbbt(
                 blk,
-                feasibility_tol=1e-6,
+                feasibility_tol=1e-8,
                 deactivate_satisfied_constraints=False,
             )
         except:
@@ -303,19 +303,19 @@ class IpoptWaterTAPFBBT:
         self._cache_bounds(blk)
         self._cache_active_constraints(blk)
 
-        try:
-            # if True:
+        # try:
+        if True:
             all_fixed = self._fbbt(blk)
-        except InfeasibleConstraintException:
-            results = SolverResults()
-            results.solver.status = SolverStatus.error
-            results.solver.termination_condition = TerminationCondition.infeasible
-            results.solver.termination_message = (
-                "FBBT determined the model was infeasible"
-            )
-            results.solver.message = "FBBT proved infeasibility subject to tolerances."
+        # except InfeasibleConstraintException:
+        #     results = SolverResults()
+        #     results.solver.status = SolverStatus.error
+        #     results.solver.termination_condition = TerminationCondition.infeasible
+        #     results.solver.termination_message = (
+        #         "FBBT determined the model was infeasible"
+        #     )
+        #     results.solver.message = "FBBT proved infeasibility subject to tolerances."
 
-            return results
+        #     return results
 
         if all_fixed:
             obj = get_objective(blk)
