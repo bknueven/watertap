@@ -74,7 +74,7 @@ class IpoptWaterTAP(IPOPT):
         if "acceptable_constr_viol_tol" not in self.options:
             self.options["acceptable_constr_viol_tol"] = 1e-08
         if "ma27_pivtol" not in self.options:
-            self.options["ma27_pivtol"] = 1e-04
+            self.options["ma27_pivtol"] = 1e-02
         if "bound_relax_factor" not in self.options:
             self.options["bound_relax_factor"] = 0.0
         if "honor_original_bounds" not in self.options:
