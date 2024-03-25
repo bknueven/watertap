@@ -17,6 +17,8 @@ from pyomo.common.collections import Bunch
 from pyomo.common.errors import InfeasibleConstraintException
 from pyomo.core.base.block import _BlockData
 from pyomo.core.kernel.block import IBlock
+
+# from pyomo.core.staleflag import StaleFlagManager
 from pyomo.solvers.plugins.solvers.IPOPT import IPOPT
 from pyomo.contrib.fbbt.fbbt import fbbt
 from pyomo.contrib.solver.util import get_objective
@@ -233,28 +235,12 @@ class IpoptWaterTAPFBBT:
     def _cache_bounds(self, blk):
         self._bound_cache = pyo.ComponentMap()
         for v in blk.component_data_objects(pyo.Var, active=True, descend_into=True):
-            # # TODO: not clear this comment matters
-            # # we could hit a variable more
-            # # than once because of References
-            # if v in self._bound_cache:
-            #     continue
             self._bound_cache[v] = v.bounds
 
     def _restore_bounds(self):
         for v, bounds in self._bound_cache.items():
             v.bounds = bounds
         del self._bound_cache
-
-    def _cache_active_constraints(self, blk):
-        self._active_constraint_cache = []
-        for c in blk.component_data_objects(
-            pyo.Constraint, active=True, descend_into=True
-        ):
-            self._active_constraint_cache.append(c)
-
-    def _restore_active_constraints(self):
-        for c in self._active_constraint_cache:
-            c.activate()
 
     def _fbbt(self, blk):
         try:
@@ -265,7 +251,6 @@ class IpoptWaterTAPFBBT:
             )
         except:
             # cleanup before raising
-            self._restore_active_constraints()
             self._restore_bounds()
             raise
         all_fixed = True
@@ -277,14 +262,19 @@ class IpoptWaterTAPFBBT:
             if v.value is None:
                 if v.lb is not None and v.ub is not None:
                     v.value = (v.lb + v.ub) / 2.0
+                else:
+                    # we'll do a bound push below
+                    v.value = 0.0
 
         if all_fixed:
             return True
 
-        k1 = 1e-2
-        k2 = 1e-2
+        # For Ipopt, we'll push the variables
+        # inside the derived bounds, even if we
+        # do not carry them through to the solve
+        k1 = self.options.get("bound_push", 1e-2)
+        k2 = self.options.get("bound_frac", 1e-2)
         for v in self._bound_cache:
-            # do a bounds push for values close to the new bounds
             sf = get_scaling_factor(v, default=1)
             if v.ub is not None:
                 pu = k1 * max(1, sf * abs(v.ub)) / sf
@@ -313,7 +303,6 @@ class IpoptWaterTAPFBBT:
             solver.options[k] = v
 
         self._cache_bounds(blk)
-        self._cache_active_constraints(blk)
 
         try:
             all_fixed = self._fbbt(blk)
@@ -354,13 +343,9 @@ class IpoptWaterTAPFBBT:
                     solution.constraint[c.name] = {"Slack": 0}
 
             results.solution.insert(solution)
-
-            self._restore_active_constraints()
             self._restore_bounds()
 
         else:  # FBBT could not solve it
-
-            self._restore_active_constraints()
             self._restore_bounds()
             results = solver.solve(blk, *args, **kwds)
 
