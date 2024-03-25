@@ -231,10 +231,11 @@ class IpoptWaterTAPFBBT:
     def _cache_bounds(self, blk):
         self._bound_cache = pyo.ComponentMap()
         for v in blk.component_data_objects(pyo.Var, active=True, descend_into=True):
-            # we could hit a variable more
-            # than once because of References
-            if v in self._bound_cache:
-                continue
+            # # TODO: not clear this comment matters
+            # # we could hit a variable more
+            # # than once because of References
+            # if v in self._bound_cache:
+            #     continue
             self._bound_cache[v] = v.bounds
 
     def _restore_bounds(self):
@@ -267,6 +268,8 @@ class IpoptWaterTAPFBBT:
             raise
         all_fixed = True
         bound_relax_factor = 1e-4
+        k1 = 1e-8
+        k2 = 1e-8
         for v, (lb, ub) in self._bound_cache.items():
             if v.lb is not None and v.lb == v.ub:
                 v.value = v.lb
@@ -290,6 +293,25 @@ class IpoptWaterTAPFBBT:
                     v.ub = _relax_upper_bound(v.ub, sf, bound_relax_factor)
             else:
                 v.ub = min(ub, _relax_upper_bound(v.ub, sf, bound_relax_factor))
+
+            # do a bounds push for values close to the new bounds
+            # to address evaluation errors
+            if v.ub is not None:
+                pu = k1 * max(1, abs(v.ub))
+            else:
+                pu = None
+            if v.lb is not None:
+                pl = k1 * max(1, abs(v.lb))
+            else:
+                pl = None
+            if pu is not None and pl is not None:
+                toward_center = k2 * (v.ub - v.lb)
+                pl = min(pl, toward_center)
+                pu = min(pu, toward_center)
+            if pl is not None and v.value < v.lb + pl:
+                v.value = v.lb + pl
+            if pu is not None and v.value > v.ub - pu:
+                v.value = v.ub - pu
 
         return all_fixed
 
