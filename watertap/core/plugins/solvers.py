@@ -269,9 +269,6 @@ class IpoptWaterTAPFBBT:
             self._restore_bounds()
             raise
         all_fixed = True
-        bound_relax_factor = 1e-4
-        k1 = 1e-8
-        k2 = 1e-8
         for v, (lb, ub) in self._bound_cache.items():
             if v.lb is not None and v.lb == v.ub:
                 v.value = v.lb
@@ -280,32 +277,21 @@ class IpoptWaterTAPFBBT:
             if v.value is None:
                 if v.lb is not None and v.ub is not None:
                     v.value = (v.lb + v.ub) / 2.0
-                else:  # this will get pushed later, if it matters
-                    v.value = 0.0
-            sf = get_scaling_factor(v, default=1)
-            if lb is None:
-                if v.lb is not None:
-                    if v.value is None or v.value < v.lb:
-                        v.value = v.lb
-                    v.lb = _relax_lower_bound(v.lb, sf, bound_relax_factor)
-            else:
-                v.lb = max(lb, _relax_lower_bound(v.lb, sf, bound_relax_factor))
-            if ub is None:
-                if v.ub is not None:
-                    if v.value is None or v.value > v.ub:
-                        v.value = v.ub
-                    v.ub = _relax_upper_bound(v.ub, sf, bound_relax_factor)
-            else:
-                v.ub = min(ub, _relax_upper_bound(v.ub, sf, bound_relax_factor))
 
+        if all_fixed:
+            return True
+
+        k1 = 1e-2
+        k2 = 1e-2
+        for v in self._bound_cache:
             # do a bounds push for values close to the new bounds
-            # to address evaluation errors
+            sf = get_scaling_factor(v, default=1)
             if v.ub is not None:
-                pu = k1 * max(1, abs(v.ub))
+                pu = k1 * max(1, sf * abs(v.ub)) / sf
             else:
                 pu = None
             if v.lb is not None:
-                pl = k1 * max(1, abs(v.lb))
+                pl = k1 * max(1, sf * abs(v.lb)) / sf
             else:
                 pl = None
             if pu is not None and pl is not None:
@@ -317,7 +303,7 @@ class IpoptWaterTAPFBBT:
             if pu is not None and v.value > v.ub - pu:
                 v.value = v.ub - pu
 
-        return all_fixed
+        return False
 
     def solve(self, blk, *args, **kwds):
 
@@ -329,19 +315,12 @@ class IpoptWaterTAPFBBT:
         self._cache_bounds(blk)
         self._cache_active_constraints(blk)
 
-        # try:
-        if True:
+        try:
             all_fixed = self._fbbt(blk)
-        # except InfeasibleConstraintException:
-        #     results = SolverResults()
-        #     results.solver.status = SolverStatus.error
-        #     results.solver.termination_condition = TerminationCondition.infeasible
-        #     results.solver.termination_message = (
-        #         "FBBT determined the model was infeasible"
-        #     )
-        #     results.solver.message = "FBBT proved infeasibility subject to tolerances."
-
-        #     return results
+        except InfeasibleConstraintException:
+            # bounds / constraint restoration done
+            # before exception is raised
+            return solver.solve(blk, *args, **kwds)
 
         if all_fixed:
             obj = get_objective(blk)
@@ -376,11 +355,14 @@ class IpoptWaterTAPFBBT:
 
             results.solution.insert(solution)
 
-        else:  # FBBT could not solve it
-            results = solver.solve(blk, *args, **kwds)
+            self._restore_active_constraints()
+            self._restore_bounds()
 
-        self._restore_active_constraints()
-        self._restore_bounds()
+        else:  # FBBT could not solve it
+
+            self._restore_active_constraints()
+            self._restore_bounds()
+            results = solver.solve(blk, *args, **kwds)
 
         return results
 
