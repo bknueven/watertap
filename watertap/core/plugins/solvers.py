@@ -280,6 +280,8 @@ class IpoptWaterTAPFBBT:
             if v.value is None:
                 if v.lb is not None and v.ub is not None:
                     v.value = (v.lb + v.ub) / 2.0
+                else:  # this will get pushed later, if it matters
+                    v.value = 0.0
             sf = get_scaling_factor(v, default=1)
             if lb is None:
                 if v.lb is not None:
