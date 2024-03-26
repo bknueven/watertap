@@ -220,64 +220,54 @@ class IpoptWaterTAPFBBT:
                 setattr(self.options, key, kwds["options"][key])
 
         self._bound_cache = pyo.ComponentMap()
+        self._value_cache = pyo.ComponentMap()
 
     def executable(self):
         return self._base_solver().executable()
 
-    def _cache_bounds(self, blk):
-        self._bound_cache = pyo.ComponentMap()
+    def _cache_bounds_values(self, blk):
+        self._bound_cache.clear()
+        self._value_cache.clear()
         for v in blk.component_data_objects(pyo.Var, active=True, descend_into=True):
             self._bound_cache[v] = v.bounds
+            self._value_cache[v] = v.value
 
     def _restore_bounds(self):
         for v, bounds in self._bound_cache.items():
             v.bounds = bounds
-        del self._bound_cache
+
+    def _restore_values(self):
+        for v, val in self._value_cache.items():
+            v.set_value(val, skip_validation=True)
 
     def _fbbt(self, blk):
         try:
             fbbt(
                 blk,
-                feasibility_tol=1e-8,
+                feasibility_tol=1e-6,
                 deactivate_satisfied_constraints=False,
             )
         except:
             # cleanup before raising
+            self._restore_values()
             self._restore_bounds()
             raise
-        for v, (lb, ub) in self._bound_cache.items():
-            if v.lb is not None and v.lb == v.ub:
-                v.value = v.lb
 
-        # For Ipopt, we'll push the variables
-        # inside the derived bounds, even if we
-        # do not carry them through to the solve
-        k1 = self.options.get("bound_push", 1e-2)
-        k2 = self.options.get("bound_frac", 1e-2)
         for v in self._bound_cache:
             if v.value is None:
-                if v.lb is not None and v.ub is not None:
-                    v.value = (v.lb + v.ub) / 2.0
-                else:
-                    # we'll do the bound push below
-                    v.value = 0.0
-            sf = get_scaling_factor(v, default=1)
-            if v.ub is not None:
-                pu = k1 * max(1, sf * abs(v.ub)) / sf
-            else:
-                pu = None
+                # set to the bound nearer 0
+                v.value = 0
             if v.lb is not None:
-                pl = k1 * max(1, sf * abs(v.lb)) / sf
-            else:
-                pl = None
-            if pu is not None and pl is not None:
-                toward_center = k2 * (v.ub - v.lb)
-                pl = min(pl, toward_center)
-                pu = min(pu, toward_center)
-            if pl is not None and v.value < v.lb + pl:
-                v.value = v.lb + pl
-            if pu is not None and v.value > v.ub - pu:
-                v.value = v.ub - pu
+                if v.lb == v.ub:
+                    v.value = v.lb
+                    continue
+                if v.value < v.lb:
+                    # print(f"projecting {v.name} at value {v.value} onto lower bound {v.lb}")
+                    v.set_value(v.lb, skip_validation=True)
+            if v.ub is not None:
+                if v.value > v.ub:
+                    # print(f"projecting {v.name} at value {v.value} onto upper bound {v.ub}")
+                    v.set_value(v.ub, skip_validation=True)
 
     def solve(self, blk, *args, **kwds):
 
@@ -286,7 +276,7 @@ class IpoptWaterTAPFBBT:
         for k, v in self.options.items():
             solver.options[k] = v
 
-        self._cache_bounds(blk)
+        self._cache_bounds_values(blk)
 
         try:
             self._fbbt(blk)
@@ -299,16 +289,6 @@ class IpoptWaterTAPFBBT:
         results = solver.solve(blk, *args, **kwds)
 
         return results
-
-
-def _relax_lower_bound(lb, sf, bound_relax_factor):
-    # return ((lb * sf - bound_relax_factor * max(1, abs(lb * sf))) / sf)
-    return lb - bound_relax_factor
-
-
-def _relax_upper_bound(ub, sf, bound_relax_factor):
-    # return ((ub * sf + bound_relax_factor * max(1, abs(ub * sf))) / sf)
-    return ub + bound_relax_factor
 
 
 ## reconfigure IDAES to use the ipopt-watertap solver
