@@ -17,14 +17,8 @@ from pyomo.common.collections import Bunch
 from pyomo.common.errors import InfeasibleConstraintException
 from pyomo.core.base.block import _BlockData
 from pyomo.core.kernel.block import IBlock
-from pyomo.core.staleflag import StaleFlagManager
 from pyomo.solvers.plugins.solvers.IPOPT import IPOPT
 from pyomo.contrib.fbbt.fbbt import fbbt
-from pyomo.contrib.solver.util import get_objective
-
-from pyomo.opt.results.results_ import SolverResults
-from pyomo.opt.results.solution import Solution, SolutionStatus
-from pyomo.opt.results.solver import TerminationCondition, SolverStatus
 
 import idaes.core.util.scaling as iscale
 from idaes.core.util.scaling import (
@@ -80,9 +74,8 @@ class IpoptWaterTAP(IPOPT):
             self.options["honor_original_bounds"] = "no"
 
         if not self._is_user_scaling():
-            super()._presolve(*args, **kwds)
             self._cleanup()
-            return
+            return super()._presolve(*args, **kwds)
 
         if self._tee:
             print(
@@ -252,15 +245,9 @@ class IpoptWaterTAPFBBT:
             # cleanup before raising
             self._restore_bounds()
             raise
-        all_fixed = True
         for v, (lb, ub) in self._bound_cache.items():
             if v.lb is not None and v.lb == v.ub:
                 v.value = v.lb
-            else:
-                all_fixed = False
-
-        if all_fixed:
-            return True
 
         # For Ipopt, we'll push the variables
         # inside the derived bounds, even if we
@@ -292,10 +279,7 @@ class IpoptWaterTAPFBBT:
             if pu is not None and v.value > v.ub - pu:
                 v.value = v.ub - pu
 
-        return False
-
     def solve(self, blk, *args, **kwds):
-        StaleFlagManager.mark_all_as_stale()
 
         solver = self._base_solver()
 
@@ -305,49 +289,14 @@ class IpoptWaterTAPFBBT:
         self._cache_bounds(blk)
 
         try:
-            all_fixed = self._fbbt(blk)
+            self._fbbt(blk)
         except InfeasibleConstraintException:
             # bounds / constraint restoration done
             # before exception is raised
             return solver.solve(blk, *args, **kwds)
 
-        if all_fixed:
-            obj = get_objective(blk)
-
-            results = SolverResults()
-
-            results.solver.status = SolverStatus.ok
-            results.solver.termination_condition = TerminationCondition.optimal
-            results.solver.termination_message = "FBBT solved the model"
-            results.solver.message = "Solution found with interval arithmetic"
-
-            if obj is None:
-                results.problem.lower_bound = 0.0
-                results.problem.upper_bound = 0.0
-            else:
-                results.problem.lower_bound = pyo.value(obj)
-                results.problem.upper_bound = pyo.value(obj)
-
-            solution = Solution()
-            solution.status = SolutionStatus.optimal
-            solution.gap = 0.0
-
-            for v in self._bound_cache:
-                solution.variable[v.name] = {"Value": v.value}
-            if hasattr(blk, "dual") and blk.dual.import_enabled():
-                _log.warning("Cannot get duals for model solved by FBBT")
-            if hasattr(blk, "rc") and blk.rc.import_enabled():
-                _log.warning("Cannot get reduced costs for model solved by FBBT")
-            if hasattr(blk, "slack") and blk.slack.import_enabled():
-                for c in self._active_constraint_cache:
-                    solution.constraint[c.name] = {"Slack": 0}
-
-            results.solution.insert(solution)
-            self._restore_bounds()
-
-        else:  # FBBT could not solve it
-            self._restore_bounds()
-            results = solver.solve(blk, *args, **kwds)
+        self._restore_bounds()
+        results = solver.solve(blk, *args, **kwds)
 
         return results
 
