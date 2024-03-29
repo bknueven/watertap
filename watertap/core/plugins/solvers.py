@@ -249,7 +249,7 @@ class IpoptWaterTAPFBBT:
             )
         except:
             # cleanup before raising
-            # self._restore_values()
+            self._restore_values()
             self._restore_bounds()
             raise
 
