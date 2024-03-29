@@ -241,17 +241,17 @@ class IpoptWaterTAPFBBT:
             v.set_value(val, skip_validation=True)
 
     def _fbbt(self, blk):
-        try:
-            fbbt(
-                blk,
-                feasibility_tol=1e-6,
-                deactivate_satisfied_constraints=False,
-            )
-        except:
-            # cleanup before raising
-            self._restore_values()
-            self._restore_bounds()
-            raise
+        # try:
+        fbbt(
+            blk,
+            feasibility_tol=1e-6,
+            deactivate_satisfied_constraints=False,
+        )
+        # except:
+        #     # cleanup before raising
+        #     self._restore_values()
+        #     self._restore_bounds()
+        #     raise
 
         for v in self._bound_cache:
             if v.value is None:
@@ -278,12 +278,12 @@ class IpoptWaterTAPFBBT:
 
         self._cache_bounds_values(blk)
 
-        try:
-            self._fbbt(blk)
-        except InfeasibleConstraintException:
-            # bounds / constraint restoration done
-            # before exception is raised
-            return solver.solve(blk, *args, **kwds)
+        # try:
+        self._fbbt(blk)
+        # except InfeasibleConstraintException:
+        #     # bounds / constraint restoration done
+        #     # before exception is raised
+        #     return solver.solve(blk, *args, **kwds)
 
         self._restore_bounds()
         results = solver.solve(blk, *args, **kwds)
