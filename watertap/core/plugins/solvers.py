@@ -74,9 +74,9 @@ class IpoptWaterTAP(IPOPT):
         if "honor_original_bounds" not in self.options:
             self.options["honor_original_bounds"] = "no"
         if "min_refinement_steps" not in self.options:
-            self.options["min_refinement_steps"] = 5
+            self.options["min_refinement_steps"] = 10
         if "max_refinement_steps" not in self.options:
-            self.options["max_refinement_steps"] = 30
+            self.options["max_refinement_steps"] = 100
 
         if not self._is_user_scaling():
             super()._presolve(*args, **kwds)
