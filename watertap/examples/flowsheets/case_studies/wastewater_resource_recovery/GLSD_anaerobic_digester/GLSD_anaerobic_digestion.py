@@ -22,9 +22,10 @@ from pyomo.network import Arc, SequentialDecomposition
 from pyomo.util.check_units import assert_units_consistent
 
 from idaes.core import FlowsheetBlock
-from idaes.core.solvers import get_solver
+from watertap.core.solvers import get_solver
 from idaes.models.unit_models import Product
 import idaes.core.util.scaling as iscale
+import idaes.logger
 from idaes.core import UnitModelCostingBlock
 
 from watertap.core.util.initialization import assert_degrees_of_freedom, check_solve
@@ -125,10 +126,10 @@ def initialize_system(m):
     seq = SequentialDecomposition()
     seq.options.tear_set = []
     seq.options.iterLim = 1
-    seq.run(m, lambda u: u.initialize())
+    seq.run(m, lambda u: u.initialize(outlvl=idaes.logger.DEBUG))
 
 
-def solve(blk, solver=None, checkpoint=None, tee=False, fail_flag=True):
+def solve(blk, solver=None, checkpoint=None, tee=True, fail_flag=True):
     if solver is None:
         solver = get_solver()
     results = solver.solve(blk, tee=tee)

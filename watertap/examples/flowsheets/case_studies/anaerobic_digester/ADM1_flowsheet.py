@@ -16,7 +16,7 @@ from pyomo.environ import (
     units,
 )
 from idaes.core import FlowsheetBlock
-from idaes.core.solvers import get_solver
+from watertap.core.solvers import get_solver
 import idaes.logger as idaeslog
 from watertap.unit_models.anaerobic_digester import AD
 from watertap.property_models.anaerobic_digestion.adm1_properties import (
@@ -99,3 +99,6 @@ def build_flowsheet():
     pyo.assert_optimal_termination(results)
 
     return m, results
+
+if __name__ == "__main__":
+    m, results = build_flowsheet()

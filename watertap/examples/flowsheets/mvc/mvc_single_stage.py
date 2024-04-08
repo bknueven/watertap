@@ -25,7 +25,7 @@ from pyomo.network import Arc, SequentialDecomposition
 
 import pyomo.environ as pyo
 from idaes.core import FlowsheetBlock
-from idaes.core.solvers import get_solver
+from watertap.core.solvers import get_solver
 from idaes.core.util.model_statistics import degrees_of_freedom
 from idaes.core.util.initialization import propagate_state
 from idaes.models.unit_models import Feed, Separator, Mixer, Product
@@ -67,7 +67,7 @@ def main():
 
     print("\n***---First solve - simulation results---***")
     solver = get_solver()
-    results = solve(m, solver=solver, tee=False)
+    results = solve(m, solver=solver, tee=True)
     print("Termination condition: ", results.solver.termination_condition)
     assert_optimal_termination(results)
     display_metrics(m)
@@ -77,7 +77,7 @@ def main():
     m.fs.Q_ext[0].fix(0)  # no longer want external heating in evaporator
     del m.fs.objective
     set_up_optimization(m)
-    results = solve(m, solver=solver, tee=False)
+    results = solve(m, solver=solver, tee=True)
     print("Termination condition: ", results.solver.termination_condition)
     display_metrics(m)
     display_design(m)
@@ -585,7 +585,7 @@ def initialize_system(m, solver=None):
 
     m.fs.costing.initialize()
 
-    solver.solve(m, tee=False)
+    solver.solve(m, tee=True)
 
     print("Initialization done")
 
@@ -625,7 +625,7 @@ def scale_costs(m):
     print("Scaled costs")
 
 
-def solve(model, solver=None, tee=False, raise_on_failure=False):
+def solve(model, solver=None, tee=True, raise_on_failure=False):
     # ---solving---
     if solver is None:
         solver = get_solver()
