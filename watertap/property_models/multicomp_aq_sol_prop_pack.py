@@ -11,10 +11,10 @@
 #################################################################################
 """
 This property package computes a multi-component aqueous solution that can
-contain ionic and/or neutral solute species. It supports basic calculation 
-of component quantities and some physical, chemical and electrical properties. 
+contain ionic and/or neutral solute species. It supports basic calculation
+of component quantities and some physical, chemical and electrical properties.
 
-This property package was formerly named the "ion_DSPMDE_prop_pack" and was originally 
+This property package was formerly named the "ion_DSPMDE_prop_pack" and was originally
 designed for use with the Donnan Steric Pore Model with Dielectric Exclusion (DSPMDE) for
 nanofiltration.
 """
@@ -78,7 +78,7 @@ from idaes.core.util.exceptions import (
 )
 import idaes.core.util.scaling as iscale
 from watertap.core.util.scaling import transform_property_constraints
-from watertap.tools.oli_api.util.watertap_to_oli_helper_functions import (
+from watertap.tools.oli_api.util.chemistry_helper_functions import (
     get_charge,
     get_molar_mass_quantity,
 )
@@ -1506,9 +1506,9 @@ class MCASStateBlockData(StateBlockData):
             ):
                 if (p, j) not in self.params.config.elec_mobility_data.keys():
                     raise ConfigurationError(
-                        """ 
-                        Missing the "elec_mobility_data" configuration to build the elec_mobility_phase_comp 
-                        and/or its derived variables for {} in {}. 
+                        """
+                        Missing the "elec_mobility_data" configuration to build the elec_mobility_phase_comp
+                        and/or its derived variables for {} in {}.
                         Provide this configuration or use ElectricalMobilityCalculation.EinsteinRelation.
                         """.format(
                             j, self.name
@@ -1526,9 +1526,9 @@ class MCASStateBlockData(StateBlockData):
                 if (p, j) not in self.params.config.diffusivity_data.keys():
                     raise ConfigurationError(
                         """
-                        Missing a valid diffusivity_data configuration to use EinsteinRelation 
-                        to compute the "elec_mobility_phase_comp" for {} in {} . 
-                        Provide this configuration or 
+                        Missing a valid diffusivity_data configuration to use EinsteinRelation
+                        to compute the "elec_mobility_phase_comp" for {} in {} .
+                        Provide this configuration or
                         use another "elec_mobility_calculation" configuration value. """.format(
                             j, self.name
                         )
@@ -1537,8 +1537,8 @@ class MCASStateBlockData(StateBlockData):
                     if (p, j) in self.params.config.elec_mobility_data.keys():
                         _log.warning(
                             """
-                            The provided elec_mobility_data of {} will be overwritten 
-                            by the calculated data for {} because the EinsteinRelation 
+                            The provided elec_mobility_data of {} will be overwritten
+                            by the calculated data for {} because the EinsteinRelation
                             method is selected.""".format(
                                 j, self.name
                             )
@@ -1692,8 +1692,8 @@ class MCASStateBlockData(StateBlockData):
             ):
                 if (p, j) not in self.params.config.trans_num_data.keys():
                     raise ConfigurationError(
-                        """ 
-                        Missing a valid trans_num_data configuration to build "trans_num_phase_comp" for {} in {}.  
+                        """
+                        Missing a valid trans_num_data configuration to build "trans_num_phase_comp" for {} in {}.
                         Provide this configuration or use another "trans_num_calculation"
                         configuration value to contruct the demanded variable(s))""".format(
                             j, self.name
@@ -1745,9 +1745,9 @@ class MCASStateBlockData(StateBlockData):
             ):
                 if p not in self.params.config.equiv_conductivity_phase_data.keys():
                     raise ConfigurationError(
-                        """ 
-                        Missing a valid equiv_conductivity_phase_data configuration to build 
-                        "equiv_conductivity_phase" and its derived variables for {}. 
+                        """
+                        Missing a valid equiv_conductivity_phase_data configuration to build
+                        "equiv_conductivity_phase" and its derived variables for {}.
                         Provide this configuration or use another "equiv_conductivity_calculation"
                         configuration value to contruct the demanded variable(s))""".format(
                             self.name
@@ -1756,10 +1756,10 @@ class MCASStateBlockData(StateBlockData):
                 else:
                     if len(self.params.ion_set) > 2:
                         _log.warning(
-                            """ 
+                            """
                             Caution should be taken to use a constant solution equivalent conductivity for a multi-electrolyte system.
                             Heterogeneous concentration variation among ions may lead to varying equivalent conductivity and computing
-                            the phase equivalent conductivity using the "EquivalentConductivityCalculation.ElectricalMobility" method 
+                            the phase equivalent conductivity using the "EquivalentConductivityCalculation.ElectricalMobility" method
                             is recommended."""
                         )
                     return (

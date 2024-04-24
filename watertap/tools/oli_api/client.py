@@ -56,7 +56,7 @@ import json
 import time
 import copy
 
-from watertap.tools.oli_api.util.watertap_to_oli_helper_functions import get_oli_name
+from watertap.tools.oli_api.util.chemistry_helper_functions import get_oli_name
 
 _logger = logging.getLogger(__name__)
 handler = logging.StreamHandler()
@@ -301,7 +301,7 @@ class OLIApi:
                 if req["status"] == "SUCCESS":
                     _logger.info(f"File deleted")
 
-    def _get_flash_mode(self, dbs_file_id, flash_method):
+    def _get_flash_mode(self, dbs_file_id, flash_method, burst_job_tag=None):
         """
         Set up arguments for OLI requests.
 
@@ -328,6 +328,10 @@ class OLIApi:
             headers = self.credential_manager.update_headers(
                 {"Content-Type": "application/json"},
             )
+            if burst_job_tag is not None:
+                url = "{}?{}".format(
+                    url, "burst={}_{}".format("watertap_burst", burst_job_tag)
+                )
         else:
             valid_flashes = [*valid_get_flashes, *valid_post_flashes]
             raise RuntimeError(
@@ -336,17 +340,111 @@ class OLIApi:
             )
         return mode, url, headers
 
-    def process_request_list(self, requests):
-        acquire_timer = time.time()
-        result_list = [self.call(**request) for request in requests]
-        acquire_time = time.time() - acquire_timer
-        num_samples = len(requests)
-        _logger.info(
-            f"Finished all {num_samples} jobs from OLI. "
-            + f"Total: {acquire_time} s, "
-            + f"Rate: {acquire_time/num_samples} s/sample"
-        )
+    def process_request_list(self, requests, batch_size=None, burst_job_tag=None):
+        """
+        Process a list of OLI requests.
+
+        :param requests: list of dictionaries for OLI calls
+        :param burst_job_tag: integer applied to OLI urls to leverage burst
+
+        :return result_list: list of JSON results from OLI
+        """
+
+        #if burst_job_tag is None:
+        #    burst_job_tag = random.randint(0, 100000)
+
+        # generate batches of call coroutines
+        def batch_generator(requests, batch_size):
+            num_requests = len(requests)
+            if not batch_size or batch_size > len(requests):
+                batch_size = num_requests
+                num_batches = 1
+                label = "batch"
+            else:
+                num_batches = int(num_requests / batch_size)
+                if num_requests % batch_size:
+                    num_batches += 1
+                if num_batches > 1:
+                    label = "batches"
+            _logger.info(f"Submitting {num_requests} requests as {num_batches} {label} ... ")
+            requests_batched = []
+            for batch in range(num_batches):
+                bounds = (batch*batch_size, (batch+1)*batch_size)
+                yield call_generator(requests, bounds)
+                if bounds[1] >= len(requests):
+                    break
+
+        # generate call coroutines
+        def call_generator(requests, bounds):
+            for idx, request in enumerate(requests[bounds[0]:bounds[1]]):
+                yield self.call_async(
+                    **request,
+                    burst_job_tag=burst_job_tag,
+                    index=bounds[0]+idx,
+                )
+
+        # send call coroutines and await results
+        async def collect_results(requests, batch_size):
+            result_list = []
+            for batch in batch_generator(requests, batch_size):
+                await asyncio.sleep(0)
+                result_list.extend(await asyncio.gather(*batch))
+            return result_list
+
+        # log time to run batch
+        def log_timer(start_time, requests):
+            acquire_time = time.time() - start_time
+            num_samples = len(requests)
+            _logger.info(
+                f"Finished all {num_samples} jobs from OLI. "
+                + f"Total: {acquire_time} s, "
+                + f"Rate: {acquire_time/num_samples} s/sample"
+            )
+
+        loop = asyncio.new_event_loop()
+        start_time = time.time()
+        result_list = loop.run_until_complete(collect_results(requests, batch_size))
+        log_timer(start_time, requests)
         return result_list
+
+    async def call_async(
+        self,
+        flash_method=None,
+        dbs_file_id=None,
+        input_params=None,
+        burst_job_tag=None,
+        index=None,
+        poll_time=0.5,
+        max_request=100,
+    ):
+        """
+        Make a call to the OLI Cloud API (async method).
+
+        :param flash_method: string indicating flash method
+        :param dbs_file_id: string name for DBS file ID
+        :param input_params: dictionary for flash calculation inputs
+        :param burst_job_tag: value to tag to OLI call URLs
+        :param poll_time: seconds between each poll
+        :param max_request: maximum number of times to try request before failure
+
+        :return result: dictionary for JSON output result
+        """
+
+        mode, url, headers = self._get_flash_mode(dbs_file_id, flash_method, burst_job_tag)
+        _logger.info(f"Submitting sample #{index+1} ...")
+        req = requests.request(
+            mode, url, headers=headers, data=json.dumps(input_params)
+        )
+        req_json = self._request_status_test(req, ["SUCCESS"])
+        result_link = self._get_result_link(req_json)
+        await asyncio.sleep(poll_time)
+        _logger.info(f"Polling sample #{index+1} ... ")
+        result = self._poll_result_link(result_link, headers, max_request, poll_time)
+        _logger.info(f"Processed sample {index+1}")
+        result["submitted_requests"] = {"flash_method": flash_method,
+                                        "dbs_file_id": dbs_file_id,
+                                        "input_params": input_params}
+        return {index: result}
 
     def call(
         self,
@@ -374,6 +472,7 @@ class OLIApi:
         )
         req_json = self._request_status_test(req, ["SUCCESS"])
         result_link = self._get_result_link(req_json)
+        time.sleep(poll_time)
         result = self._poll_result_link(result_link, headers, max_request, poll_time)
         result["submitted_requests"] = {"flash_method": flash_method,
                                         "dbs_file_id": dbs_file_id,
@@ -436,7 +535,6 @@ class OLIApi:
         """
 
         for _ in range(max_request):
-            time.sleep(poll_time)
             result_req = requests.get(result_link, headers=headers)
             result_req = self._request_status_test(
                 result_req, ["IN QUEUE", "IN PROGRESS", "PROCESSED", "FAILED"]
@@ -446,4 +544,5 @@ class OLIApi:
                 if result_req["data"]:
                     result = result_req["data"]
                     return result
+            time.sleep(poll_time)
         raise RuntimeError("Poll limit exceeded.")

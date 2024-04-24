@@ -234,7 +234,7 @@ class StoichiometricReactorData(UnitModelBlockData):
                 {
                 "precipitate_name_1":
                 {
-                "mw": (value, units), 
+                "mw": (value, units),
                 "precipitation_stoichiometric":
                 {
                 "component_name_1": stoichiometric_coeff,
