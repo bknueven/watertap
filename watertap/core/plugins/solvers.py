@@ -11,6 +11,10 @@
 #################################################################################
 
 import logging
+import math
+import time
+
+import numpy as np
 
 import pyomo.environ as pyo
 from pyomo.core.base.block import _BlockData
@@ -143,7 +147,9 @@ class IpoptWaterTAP(IPOPT):
             if nlp.nnz_hessian_lag() == 0:
                 if "alpha_for_y" not in self.options:
                     self.options["alpha_for_y"] = "bound-mult"
-
+            # run Constraint Consensus Algorithm to refine
+            # the initial point given by the user
+            run_cca(self._model, nlp, self._tee)
         try:
             # this creates the NL file, among other things
             return super()._presolve(*args, **kwds)
@@ -213,3 +219,216 @@ _idaes_default_solver = _default_solver_config_value._default
 _default_solver_config_value.set_default_value("ipopt-watertap")
 if not _default_solver_config_value._userSet:
     _default_solver_config_value.reset()
+
+
+from pyomo.environ import ComponentMap
+from pyomo.contrib.incidence_analysis import get_incident_variables, IncidenceMethod
+
+
+def run_cca(model, nlp, tee, tol=1e-08):
+    """
+    Constraint Consensus Algorithm: Attempts to refine an initial point.
+
+    This implementation mostly reflects the following reference:
+        Chinneck, John W. "The constraint consensus method for finding approximately
+        feasible points in nonlinear programs." INFORMS journal on computing 16.3
+        (2004): 255-265.
+    """
+
+    start_time = time.time()
+
+    alpha_tol = 1e01
+    beta_tol = 1e00
+    iter_limit = 100
+
+    if tee:
+        print("Initialization Refinement: Constraint Consensus Algorithm")
+        print(
+            "{_iter:<6}"
+            "{infeasibility:<16}"
+            "{alpha:<11}"
+            "{beta:<11}"
+            "{time:<6}".format(
+                _iter="iter",
+                infeasibility="   inf_pr   ",
+                alpha="inf_dist",
+                beta=" ||d|| ",
+                time="time",
+            )
+        )
+
+    lb = nlp.primals_lb()
+    ub = nlp.primals_ub()
+
+    x = nlp.init_primals().copy()
+
+    ineq_lb = nlp.ineq_lb()
+    ineq_ub = nlp.ineq_ub()
+
+    primal_inf = np.inf
+    alpha = np.nan
+    beta = 0.0
+
+    for _iter in range(iter_limit):
+        # step 1
+        ninf = 0
+        n = np.zeros(len(x), dtype=int)
+        s = np.zeros(len(x), dtype=float)
+
+        # step 2
+        nlp.set_primals(x)
+
+        eq_val = nlp.evaluate_eq_constraints()
+        ineq_val = nlp.evaluate_ineq_constraints()
+
+        more_votes = len(eq_val) + len(ineq_val)
+
+        prior_primal_inf = primal_inf
+        if eq_val.size == 0:
+            max_eq_resid = 0
+        else:
+            max_eq_resid = np.max(np.abs(eq_val))
+        if ineq_val.size == 0:
+            max_ineq_resid = 0
+        else:
+            max_lb_resid = np.max(ineq_lb - ineq_val)
+            max_ub_resid = np.max(ineq_val - ineq_ub)
+            max_ineq_resid = max(max_lb_resid, max_ub_resid)
+        max_lb_resid = np.max(lb - x)
+        max_ub_resid = np.max(x - ub)
+        max_bound_resid = max(max_lb_resid, max_ub_resid)
+        primal_inf = max(max_eq_resid, max_ineq_resid, max_bound_resid)
+
+        # safeguard -- if we go off the rails
+        if prior_primal_inf * 1e6 < primal_inf:
+            nlp.set_primals(x - t)
+            break
+
+        alpha = 0.0
+        jac_eq = nlp.evaluate_jacobian_eq().tocsr()
+        jac_ineq = nlp.evaluate_jacobian_ineq().tocsr()
+
+        alpha_tol_satisfied = True
+        for idx, viol in enumerate(eq_val):
+            if viol == 0.0:
+                # constraint is exactly satisfied
+                continue
+
+            #  viol * jac_eq[idx] / ||jac_eq[idx]||**2
+            row = jac_eq.getrow(idx)
+            div = sum(val * val for val in row.data)
+            feas_dis = abs(viol / math.sqrt(div))
+            alpha = max(alpha, feas_dis)
+            # always update constraints
+            if feas_dis > alpha_tol:
+                alpha_tol_satisfied = False
+            if abs(viol) < tol:
+                n[row.indices] += more_votes
+                row *= -(viol / div) * more_votes
+            else:
+                n[row.indices] += 1
+                row *= -(viol / div)
+            ninf += 1
+            s += row
+
+        for idx, val in enumerate(ineq_val):
+            viol_lb = ineq_lb[idx] - val
+            viol_ub = val - ineq_ub[idx]
+            if max(viol_lb, viol_ub) < 0.0:
+                # try to keep an interior point by making
+                # these inequalities strict
+                continue
+            if viol_lb > viol_ub:
+                viol = viol_lb
+                d = 1
+            else:
+                viol = viol_ub
+                d = -1
+            #  viol * jac_eq[idx] / ||jac_eq[idx]||**2
+            row = jac_ineq.getrow(idx)
+            div = sum(val * val for val in row.data)
+            feas_dis = abs(viol / math.sqrt(div))
+            alpha = max(alpha, feas_dis)
+            # always update inequality constraints
+            if feas_dis > alpha_tol:
+                alpha_tol_satisfied = False
+            if abs(viol) < tol:
+                n[row.indices] += more_votes
+                row *= d * (viol / div) * more_votes
+            else:
+                row *= d * (viol / div)
+                n[row.indices] += 1
+            ninf += 1
+            s += row
+
+        # turn single row-matrix
+        # back into array
+        if ninf > 0:
+            s = s.A[0]
+        for idx, val in enumerate(x):
+            viol_lb = lb[idx] - val
+            viol_ub = val - ub[idx]
+            if max(viol_lb, viol_ub) < 0.0:
+                # try to keep an interior point by making
+                # these inequalities strict
+                continue
+            # push variable bounds inside
+            if viol_lb > viol_ub:
+                viol = 1.1 * viol_lb
+                d = 1
+            else:
+                viol = 1.1 * viol_ub
+                d = -1
+            alpha = max(alpha, viol)
+            # always update variable bounds
+            if viol > alpha_tol:
+                alpha_tol_satisfied = False
+            ninf += 1
+            # bounds get the votes!
+            if abs(viol) > 0:
+                s[idx] += d * viol * more_votes * more_votes
+                n[idx] += more_votes * more_votes
+                print(f"violated bound of {viol} for var {nlp.vlist[idx].name}")
+            else:
+                s[idx] += d * viol * more_votes
+                n[idx] += more_votes
+
+        if tee:
+            print(
+                "{_iter:<6}"
+                "{infeasibility:<16.7e}"
+                "{alpha:<11.2e}"
+                "{beta:<11.2e}"
+                "{time:<7.2f}".format(
+                    _iter=_iter,
+                    infeasibility=primal_inf,
+                    alpha=alpha,
+                    beta=beta,
+                    time=time.time() - start_time,
+                )
+            )
+
+        # step 3
+        if alpha_tol_satisfied:
+            break
+
+        # step 4
+        t = np.zeros(len(x), dtype=float)
+        for i, (s_i, n_i) in enumerate(zip(s, n)):
+            if n_i != 0:
+                t[i] = s_i / n_i
+
+        # step 5
+        beta = np.linalg.norm(t)
+        if beta <= beta_tol:
+            break
+
+        # step 6 & 7
+        x = x + t
+
+        # step 8
+        continue
+
+    primals = nlp.get_primals()
+    for idx, v in enumerate(nlp.vlist):
+        v.set_value(primals[idx], skip_validation=True)
