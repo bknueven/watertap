@@ -16,6 +16,7 @@ The three components of this file are:
 """
 
 def initial_solve(CO2_init, temp, pres):
+    # create initial Reaktoro state
     db = rkt.PhreeqcDatabase("pitzer.dat")
     aq_species = {
         "H2O": 1 * pyo.units.kg,
@@ -29,6 +30,7 @@ def initial_solve(CO2_init, temp, pres):
         "pressure": pyo.value(pres),
         "CO2": CO2_init,
     }
+    # equilibrate state
     solve_eq_problem(state, params=rkt_inputs)
 
     # create initial Pyomo model
@@ -60,8 +62,6 @@ def minimize_co2_dose(CO2_init, target_ph, temp, pres):
     model.solution_pH = pyo.Var(bounds=[0,14], initialize=7, units=pyo.units.dimensionless)
     model.target_pH.fix(target_ph)
 
-
-
     # pH is an estimation; model.reactor.outputs are roughly equivalent to Molarity (mol/L)
     # need to find a way to implement the below transformation:
     # molarity = model.reactor.outputs["H+"] / state.props().volume().val()
@@ -83,11 +83,11 @@ def minimize_co2_dose(CO2_init, target_ph, temp, pres):
     results = solver.solve(model, tee=False)
     pyo.assert_optimal_termination(results)
 
+    # update model with equilibrium activities and solution pH
     for species in model.equilibrium_species:
         model.equilibrium_species[species].fix(state.props().speciesActivity(species).val())
     model.solution_pH.fix(-pyo.log10(model.equilibrium_species["H+"]))
     return state, model
-
 
 if __name__ == "__main__":
     # set problem bounds
