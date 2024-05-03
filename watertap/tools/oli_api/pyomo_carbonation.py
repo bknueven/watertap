@@ -9,72 +9,59 @@ from wt_rkt_helpers import ReaktoroOutputModel, build_rkt_state, solve_eq_proble
 """
 This file demonstrates a simple example of integration between Pyomo and Reaktoro.
 
-The three components of this file are:
-    - A function to get a standalone equilibrium solution and create an initial Reaktoro state and Pyomo model
-    - A plotting function of pH vs. CO2 dose for a sweep of CO2 doses (at fixed temperature and pressure)
+The 3 components of this file are:
+    - A plotting function of pH vs. CO2 amount for a sweep of CO2 amounts (at fixed temperature and pressure)
+    - A function to get a standalone equilibrium solution given a total amount of CO2
     - A function to minimize CO2 dose given a target pH using the External Grey Box model from Pyomo
 """
 
-def initial_solve(CO2_init, temp, pres):
-    # create initial Reaktoro state
-    db = rkt.PhreeqcDatabase("pitzer.dat")
-    aq_species = {
-        "H2O": 1 * pyo.units.kg,
-        "CO2": CO2_init * pyo.units.mol,
-    }
-    state = build_rkt_state(
-        db, aq_species, gas_species=None, solid_species=None, temp=temp, pres=pres, allow_solids=False,
-    )
-    rkt_inputs = {
-        "temperature": pyo.value(temp),
-        "pressure": pyo.value(pres),
-        "CO2": CO2_init,
-    }
-    # equilibrate state
-    solve_eq_problem(state, params=rkt_inputs)
+# quickly get pH from Reaktoro
+ph = lambda state: rkt.AqueousProps(state.props()).pH().val()
 
-    # create initial Pyomo model
-    rkt_outputs = [species.name() for species in state.system().species()]
-    model = build_pyo_model(state, rkt_inputs, rkt_outputs)
-    return state, model
-
-def plot_CO2_sweep(CO2_init, CO2_range, temp, pres):
-    # create a dictionary with CO2 dose (mol) vs. pH (-)
-    state, model = initial_solve(CO2_init, temp, pres)
-    xy_dict = {}
-    for amount in CO2_range:
-        state.set("CO2", amount, "mol")
-        solve_eq_problem(state)
-        xy_dict[amount] = -math.log10(state.props().speciesActivity("H+").val())
-    #print(xy_dict)
-    plt.title("pH change with CO2 addition")
-    plt.plot(xy_dict.keys(), xy_dict.values())
+def plot_pH_dose_response(state, dosant, dose_range):
+    # plot pH response w.r.t. dosant
+    plt.title(f"pH response to {dosant}")
     plt.ylabel("pH (-)")
-    plt.xlabel("CO2 amount (mol)")
+    plt.xlabel(f"{dosant} dose (mol)")
     plt.grid("both")
+    xy_dict = {}
+    initial_amount = state.props().speciesAmount(dosant).val()
+    for dose in dose_range:
+        state.set(dosant, initial_amount + dose, "mol")
+        solve_eq_problem(state)
+        xy_dict[dose] = ph(state)
+    plt.plot(xy_dict.keys(), xy_dict.values(), label=dosant)
+    plt.legend()
 
-def minimize_co2_dose(CO2_init, target_ph, temp, pres):
-    # create initial state in Reaktoro
-    state, model = initial_solve(CO2_init, temp, pres)
+def standalone_solver(state, dosant, dose):
+    # solve an equilibrium problem given a dosant (mol)
+    initial_amount = state.props().speciesAmount(dosant).val()
+    state.set(dosant, initial_amount + dose, "mol")
+    solve_eq_problem(state)
 
+def pyomo_optimizer(state, model, dosant, target_ph):
     # constrain pH such that solution pH == target pH
     model.target_pH = pyo.Var(bounds=[0,14], initialize=7, units=pyo.units.dimensionless)
-    model.solution_pH = pyo.Var(bounds=[0,14], initialize=7, units=pyo.units.dimensionless)
     model.target_pH.fix(target_ph)
-
+    # note: (possibly resolved) can get partial derivative from Reaktoro.EquilibriumSensitivity.dudw()
+    # https://github.com/reaktoro/reaktoro/discussions/380
     # pH is an estimation; model.reactor.outputs are roughly equivalent to Molarity (mol/L)
     # need to find a way to implement the below transformation:
     # molarity = model.reactor.outputs["H+"] / state.props().volume().val()
     # activity = state.props().speciesActivities("H+").val() * molarity
-    # model.solution_pH = -pyo.log10(activity)
     model.pH_constraint = pyo.Constraint(expr=model.target_pH == -pyo.log10(model.reactor.outputs['H+']))
 
     # fix temperature and pressure, CO2 is unbound
-    model.temp_constraint = pyo.Constraint(expr=model.reactor.inputs['temperature'] == pyo.value(temp))
-    model.pres_constraint = pyo.Constraint(expr=model.reactor.inputs['pressure'] == pyo.value(pres))
+    model.temp_constraint = pyo.Constraint(
+        expr=model.reactor.inputs['temperature'] == state.temperature().val(),
+    )
+    model.pres_constraint = pyo.Constraint(
+        expr=model.reactor.inputs['pressure'] == state.pressure().val(),
+    )
 
     # add model objective
-    model.CO2_dose = pyo.Objective(expr=model.reactor.inputs["CO2"], sense=pyo.minimize)
+    initial_amount = model.reactor.inputs[dosant]
+    model.dose_objective = pyo.Objective(expr=model.reactor.inputs[dosant], sense=pyo.minimize)
 
     # solve model with cyipopt
     solver = pyo.SolverFactory("cyipopt")
@@ -82,40 +69,90 @@ def minimize_co2_dose(CO2_init, target_ph, temp, pres):
     solver.config.options['hessian_approximation'] = 'limited-memory'
     results = solver.solve(model, tee=False)
     pyo.assert_optimal_termination(results)
-
-    # update model with equilibrium activities and solution pH
-    for species in model.equilibrium_species:
-        model.equilibrium_species[species].fix(state.props().speciesActivity(species).val())
-    model.solution_pH.fix(-pyo.log10(model.equilibrium_species["H+"]))
-    return state, model
+    model.dose = pyo.Var(
+        domain=pyo.NonNegativeReals, initialize=model.reactor.inputs[dosant]-initial_amount, units=pyo.units.mol,
+    )
+    model.pprint()
+    return model
 
 if __name__ == "__main__":
-    # set problem bounds
-    CO2_init = 1e-8
-    CO2_limit = 1
-    # sweep over 1000 CO2 concentrations for plot
-    CO2_range = np.linspace(CO2_init, CO2_limit, 1000)
-
-    # function to quickly get pH from Reaktoro
-    ph = lambda state: rkt.AqueousProps(state.props()).pH().val()
+    # use Pitzer database from PHREEQC
+    db = rkt.PhreeqcDatabase("pitzer.dat")
 
     # initial state vars
     temp = 298.15 * pyo.units.K
     pres = 101325 * pyo.units.Pa
 
+    # set up Reaktoro state
+    aq_species = {
+        "H2O": 1 * pyo.units.kg,
+        "CO2": 1e-16 * pyo.units.mol,
+        "Ca+2": 1e-5 * pyo.units.mol,
+    }
+    # build state and solve initial equilibrium problem
+    state = build_rkt_state(
+        db, aq_species, gas_species=None, solid_species=None, temp=temp, pres=pres, allow_solids=False,
+    )
+    solve_eq_problem(state)
+
+    working_state = rkt.ChemicalState(state)
+    # Method 1: sweep through CO2 doses to get a rough idea of optimal solution
+    dose_range = np.linspace(1e-8, 1., 1000)
     # plot pH vs CO2 sweep
-    plot_CO2_sweep(CO2_init, CO2_range, temp, pres)
+    plot_pH_dose_response(working_state, "CO2", dose_range)
 
-    # Solve standalone equilibrium problem given a guess for CO2 amount
-    CO2_init = .25
-    state, model = initial_solve(CO2_init, temp, pres)
-    print(f"Standalone solve pH: {ph(state)}")
-    print(f"CO2 amount: {CO2_init} mol\n")
+    # Method 2: solve standalone equilibrium problem with guess for CO2 dose
+    working_state = rkt.ChemicalState(state)
+    dose = 0.22
+    standalone_solver(working_state, "CO2", dose)
+    print(f"Standalone solution pH: {ph(working_state)}")
+    print(f"CO2 dose: {dose} mol\n")
 
-    # Optimize CO2 amount given a target pH
-    CO2_init = .1
-    target_ph = 3.5
-    state, model = minimize_co2_dose(CO2_init, target_ph, temp, pres)
-    CO2_amount = pyo.value(model.reactor.inputs["CO2"])
-    print(f"Grey box solve pH: {ph(state)}")
-    print(f"CO2 amount: {CO2_amount} mol\n")
+    # Method 3: optimize CO2 dose given a target pH
+    working_state = rkt.ChemicalState(state)
+    # specify Reaktoro inputs/outputs for use with Pyomo Grey Box
+    # look in wt_rkt.helpers.py to see list of valid outputs (in _get_jacobian_rows)
+    rkt_input = {"temperature": pyo.value(temp), "pressure": pyo.value(pres), "CO2": 0}
+    rkt_output = "speciesActivity"
+    # setup Pyomo model
+    model = build_pyo_model(state, rkt_input, rkt_output)
+    pyomo_optimizer(working_state, model, "CO2", target_ph=3.5)
+    print(f"Grey Box solution pH: {ph(working_state)}")
+    print(f"CO2 dose: {pyo.value(model.dose)} mol\n")
+
+    # NOTE: on Method 3 I started getting this message:
+    '''
+    Exception ignored in: <function AmplInterface.__del__ at 0x0000027B9D3EF5E0>
+    Traceback (most recent call last):
+      File "~\AppData\Local\miniconda3\envs\watertap-rkt\lib\site-packages\pyomo\contrib\pynumero\asl.py", line 312, in __del__
+        self.ASLib.EXTERNAL_AmplInterface_free_memory(self._obj)
+    AttributeError: 'NoneType' object has no attribute 'EXTERNAL_AmplInterface_free_memory'
+
+    Traceback (most recent call last):
+
+      File ~\AppData\Local\miniconda3\envs\watertap-rkt\lib\site-packages\spyder_kernels\py3compat.py:356 in compat_exec
+        exec(code, globals, locals)
+
+      File ~\documents\software\watertap\watertap\tools\oli_api\pyomo_carbonation.py:120
+        pyomo_optimizer(working_state, model, "CO2", target_ph=3.5)
+
+      File ~\documents\software\watertap\watertap\tools\oli_api\pyomo_carbonation.py:71 in pyomo_optimizer
+        results = solver.solve(model, tee=False)
+
+      File ~\AppData\Local\miniconda3\envs\watertap-rkt\lib\site-packages\pyomo\contrib\pynumero\algorithms\solvers\cyipopt_solver.py:337 in solve
+        nlp = pyomo_grey_box.PyomoNLPWithGreyBoxBlocks(model)
+
+      File ~\AppData\Local\miniconda3\envs\watertap-rkt\lib\site-packages\pyomo\contrib\pynumero\interfaces\pyomo_grey_box_nlp.py:63 in __init__
+        self._pyomo_nlp = PyomoNLP(pyomo_model)
+
+      File ~\AppData\Local\miniconda3\envs\watertap-rkt\lib\site-packages\pyomo\contrib\pynumero\interfaces\pyomo_nlp.py:105 in __init__
+        super(PyomoNLP, self).__init__(nl_file)
+
+      File ~\AppData\Local\miniconda3\envs\watertap-rkt\lib\site-packages\pyomo\contrib\pynumero\interfaces\ampl_nlp.py:54 in __init__
+        self._asl = _asl.AmplInterface(self._nl_file)
+
+      File ~\AppData\Local\miniconda3\envs\watertap-rkt\lib\site-packages\pyomo\contrib\pynumero\asl.py:258 in __init__
+        raise RuntimeError("Cannot load the PyNumero ASL interface (pynumero_ASL)")
+
+    RuntimeError: Cannot load the PyNumero ASL interface (pynumero_ASL)
+    '''
