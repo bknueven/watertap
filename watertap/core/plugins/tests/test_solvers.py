@@ -66,6 +66,10 @@ class TestIpoptWaterTAP:
         assert s.__class__ is IpoptWaterTAP
 
     @pytest.mark.unit
+    def test_get_solver_registration(self):
+        assert get_solver().__class__ is IpoptWaterTAP
+
+    @pytest.mark.unit
     @pytest.mark.requires_idaes_solver
     def test_attribute_passthrough(self, s):
         assert s.available()
