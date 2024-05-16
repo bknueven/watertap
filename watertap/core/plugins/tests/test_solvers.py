@@ -59,14 +59,14 @@ class TestIpoptWaterTAP:
 
     @pytest.fixture(scope="class")
     def s(self):
-        return pyo.SolverFactory("ipopt-watertap")
+        return IpoptWaterTAP()
 
     @pytest.mark.unit
     def test_pyomo_registration(self, s):
         assert s.__class__ is IpoptWaterTAP
 
     @pytest.mark.unit
-    def test_idaes_registration(self):
+    def test_get_solver_registration(self):
         assert get_solver().__class__ is IpoptWaterTAP
 
     @pytest.mark.unit
