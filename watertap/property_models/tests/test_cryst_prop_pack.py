@@ -300,8 +300,8 @@ class TestNaClPropertySolution_4(PropertyRegressionTest):
         }
 
         self.state_args = {
-            ("flow_vol_phase", "Liq"): 0,
-            ("flow_vol_phase", "Vap"): 0,
+            ("flow_vol_phase", "Liq"): 1e-20,
+            ("flow_vol_phase", "Vap"): 1e-20,
             ("mass_frac_phase_comp", ("Liq", "NaCl")): 0.05,
             ("flow_mass_phase_comp", ("Sol", "NaCl")): 1.0,
             ("temperature", None): 273.15 + 25,
@@ -338,8 +338,8 @@ class TestNaClPropertySolution_5(PropertyRegressionTest):
         }
 
         self.state_args = {
-            ("flow_vol_phase", "Liq"): 0,
-            ("flow_vol_phase", "Sol"): 0,
+            ("flow_vol_phase", "Liq"): 1e-20,
+            ("flow_vol_phase", "Sol"): 1e-20,
             ("mass_frac_phase_comp", ("Liq", "NaCl")): 0.05,
             ("flow_mass_phase_comp", ("Vap", "H2O")): 1.0,
             ("temperature", None): 273.15 + 25,
@@ -727,10 +727,10 @@ class TestNaClCalculateState_4(PropertyCalculateStateTest):
         }
 
         self.var_args = {
-            ("flow_vol_phase", "Liq"): 0,
+            ("flow_vol_phase", "Liq"): 1e-20,
             ("mass_frac_phase_comp", ("Liq", "NaCl")): 0,
             ("flow_vol_phase", "Sol"): 2e-2,
-            ("flow_vol_phase", "Vap"): 0,
+            ("flow_vol_phase", "Vap"): 1e-20,
             ("temperature", None): 273.15 + 25,
             ("pressure", None): 5e5,
         }
