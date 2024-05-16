@@ -278,12 +278,12 @@ class IpoptWaterTAPFBBT:
 
         self._cache_bounds_values(blk)
 
-        # try:
-        self._fbbt(blk)
-        # except InfeasibleConstraintException:
-        #     # bounds / constraint restoration done
-        #     # before exception is raised
-        #     return solver.solve(blk, *args, **kwds)
+        try:
+            self._fbbt(blk)
+        except InfeasibleConstraintException:
+            # bounds / constraint restoration done
+            # before exception is raised
+            self._restore_values()
 
         self._restore_bounds()
         results = solver.solve(blk, *args, **kwds)
