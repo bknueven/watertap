@@ -78,6 +78,7 @@ from watertap.unit_models.thickener import (
 
 from watertap.core.util.initialization import (
     check_solve,
+    interval_initializer,
     # assert_degrees_of_freedom
 )
 
@@ -102,6 +103,7 @@ def main(bio_P=False):
     print(f"DOF before initialization: {degrees_of_freedom(m)}")
 
     initialize_system(m, bio_P=bio_P)
+
     for mx in m.fs.mixers:
         mx.pressure_equality_constraints[0.0, 2].deactivate()
     m.fs.MX3.pressure_equality_constraints[0.0, 2].deactivate()
@@ -117,6 +119,8 @@ def main(bio_P=False):
     m.fs.R5.outlet.conc_mass_comp[:, "S_O2"].unfix()
     m.fs.R6.outlet.conc_mass_comp[:, "S_O2"].unfix()
     m.fs.R7.outlet.conc_mass_comp[:, "S_O2"].unfix()
+
+    interval_initializer(m)
 
     # Resolve with controls in place
     results = solve(m)
@@ -671,6 +675,7 @@ def initialize_system(m, bio_P=True, solver=None):
     seq.set_guesses_for(m.fs.translator_asm2d_adm1.inlet, tear_guesses2)
 
     def function(unit):
+        # interval_initializer(unit)
         unit.initialize(outlvl=idaeslog.INFO, solver="ipopt-watertap")
 
     seq.run(m, function)

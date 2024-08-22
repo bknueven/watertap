@@ -122,7 +122,7 @@ see reaction package for documentation.}""",
         )
 
         self.eps = Param(
-            initialize=1e-10,
+            initialize=1e-8,
             units=pyunits.kg / pyunits.m**3,
             mutable=True,
             doc="Smoothing factor",
