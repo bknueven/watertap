@@ -50,7 +50,7 @@ from watertap.property_models.unit_specific.activated_sludge.modified_asm2d_reac
     ModifiedASM2dReactionParameterBlock,
 )
 from idaes.models.unit_models.mixer import MomentumMixingType
-from watertap.core.util.initialization import check_solve
+from watertap.core.util.initialization import check_solve, interval_initializer
 
 # Set up logger
 _log = idaeslog.getLogger(__name__)
@@ -347,9 +347,12 @@ def build_flowsheet():
     seq.set_guesses_for(m.fs.R3.inlet, tear_guesses)
 
     def function(unit):
-        unit.initialize(outlvl=idaeslog.INFO, optarg={"bound_push": 1e-2})
+        unit.initialize(outlvl=idaeslog.INFO)
 
     seq.run(m, function)
+
+    interval_initializer(m)
+
     for mx in m.fs.mixers:
         mx.pressure_equality_constraints[0.0, 2].deactivate()
     assert degrees_of_freedom(m) == 0
@@ -367,6 +370,7 @@ def build_flowsheet():
     m.fs.R6.outlet.conc_mass_comp[:, "S_O2"].unfix()
     m.fs.R7.outlet.conc_mass_comp[:, "S_O2"].unfix()
 
+    interval_initializer(m)
     # Resolve with controls in place
     results = solver.solve(m, tee=False)
 
