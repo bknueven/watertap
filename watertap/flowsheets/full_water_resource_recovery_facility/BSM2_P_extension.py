@@ -20,6 +20,7 @@ but comprises different specifications for default values than BSM2.
 # Some more information about this module
 __author__ = "Chenyu Wang, Adam Atia, Alejandro Garciadiego, Marcus Holly"
 
+import math
 import pyomo.environ as pyo
 from pyomo.network import Arc, SequentialDecomposition
 
@@ -78,6 +79,7 @@ from watertap.unit_models.thickener import (
 
 from watertap.core.util.initialization import (
     check_solve,
+    interval_initializer,
     # assert_degrees_of_freedom
 )
 
@@ -110,6 +112,9 @@ def main(bio_P=False):
     m.fs.MX3.pressure_equality_constraints[0.0, 3].deactivate()
     print(f"DOF after initialization: {degrees_of_freedom(m)}")
 
+    interval_initializer(m)
+    rescale_variables(m)
+
     bti = BlockTriangularizationInitializer(block_solver="ipopt-watertap", block_solver_options={"bound_push":1e-02}, block_solver_call_options={"tee":True})
     bti.initialize(m)
 
@@ -123,6 +128,8 @@ def main(bio_P=False):
     m.fs.R6.outlet.conc_mass_comp[:, "S_O2"].unfix()
     m.fs.R7.outlet.conc_mass_comp[:, "S_O2"].unfix()
 
+    interval_initializer(m)
+    rescale_variables(m)
     # Resolve with controls in place
     results = solve(m)
 
@@ -138,6 +145,8 @@ def main(bio_P=False):
     # m.fs.costing.initialize()
     #
     # assert_degrees_of_freedom(m, 0)
+    # interval_initializer(m)
+    # rescale_variables(m)
     #
     # results = solve(m)
     # pyo.assert_optimal_termination(results)
@@ -676,9 +685,27 @@ def initialize_system(m, bio_P=True, solver=None):
     seq.set_guesses_for(m.fs.translator_asm2d_adm1.inlet, tear_guesses2)
 
     def function(unit):
-        unit.initialize(outlvl=idaeslog.INFO, solver="ipopt-watertap")
+        unit.initialize(
+            outlvl=idaeslog.INFO, solver="ipopt-watertap"
+        )  # , optarg={"bound_push":1e-20})
 
     seq.run(m, function)
+    # rescale_variables(m)
+
+
+def rescale_variables(m):
+    for var in m.fs.component_data_objects(pyo.Var, descend_into=True):
+        iscale.set_scaling_factor(var, calc_scale(var.value))
+
+
+def calc_scale(value):
+    if value < 0:
+        value = -value
+    if value < 1e-10:
+        value = 1e-10
+    if value > 1e10:
+        value = 1e10
+    return 1 / value
 
 
 def solve(m, solver=None):
