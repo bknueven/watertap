@@ -112,13 +112,21 @@ def main(bio_P=False):
     m.fs.MX3.pressure_equality_constraints[0.0, 3].deactivate()
     print(f"DOF after initialization: {degrees_of_freedom(m)}")
 
+    tol = 1e-06
+    bti = BlockTriangularizationInitializer(
+        block_solver="ipopt-watertap",
+        block_solver_options={
+            "bound_push": 1e-10,
+            "tol": tol,
+            "constr_viol_tol": tol,
+            "acceptable_constr_viol_tol": tol,
+        },
+        block_solver_call_options={"tee": True},
+    )
+
     interval_initializer(m)
-    rescale_variables(m)
-
-    bti = BlockTriangularizationInitializer(block_solver="ipopt-watertap", block_solver_options={"bound_push":1e-02}, block_solver_call_options={"tee":True})
     bti.initialize(m)
-
-    results = solve(m)
+    rescale_variables(m)
 
     # Switch to fixed KLa in R5, R6, and R7 (S_O concentration is controlled in R5)
     m.fs.R5.KLa.fix(240)
@@ -129,7 +137,9 @@ def main(bio_P=False):
     m.fs.R7.outlet.conc_mass_comp[:, "S_O2"].unfix()
 
     interval_initializer(m)
+    bti.initialize(m)
     rescale_variables(m)
+
     # Resolve with controls in place
     results = solve(m)
 
@@ -546,6 +556,7 @@ def set_operating_conditions(m):
         iscale.set_scaling_factor(
             block.control_volume.reactions[0.0].rate_expression, 1e3
         )
+        iscale.set_scaling_factor(block.control_volume.rate_reaction_extent, 1e0)
         iscale.set_scaling_factor(block.cstr_performance_eqn, 1e3)
         iscale.set_scaling_factor(
             block.control_volume.rate_reaction_stoichiometry_constraint, 1e3
