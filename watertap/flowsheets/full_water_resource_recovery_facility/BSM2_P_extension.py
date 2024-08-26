@@ -87,6 +87,8 @@ from watertap.core.util.initialization import (
 #     cost_primary_clarifier,
 # )
 
+from idaes.core.initialization import BlockTriangularizationInitializer
+
 # Set up logger
 _log = idaeslog.getLogger(__name__)
 
@@ -107,6 +109,9 @@ def main(bio_P=False):
     m.fs.MX3.pressure_equality_constraints[0.0, 2].deactivate()
     m.fs.MX3.pressure_equality_constraints[0.0, 3].deactivate()
     print(f"DOF after initialization: {degrees_of_freedom(m)}")
+
+    bti = BlockTriangularizationInitializer(block_solver="ipopt-watertap", block_solver_options={"bound_push":1e-02}, block_solver_call_options={"tee":True})
+    bti.initialize(m)
 
     results = solve(m)
 
@@ -548,7 +553,7 @@ def initialize_system(m, bio_P=True, solver=None):
     # Apply sequential decomposition - 1 iteration should suffice
     seq = SequentialDecomposition()
     seq.options.tear_method = "Direct"
-    seq.options.iterLim = 5
+    seq.options.iterLim = 1
     seq.options.tear_set = [m.fs.stream5, m.fs.stream10adm]
 
     G = seq.create_graph(m)
