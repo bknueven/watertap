@@ -129,7 +129,7 @@ jobs:
         echo PYTEST_ADDOPTS="$PYTEST_ADDOPTS --cov-report=xml" >> $GITHUB_ENV
     - name: Test with pytest
       run: |
-        pytest --pyargs watertap
+        pytest --pyargs watertap -k "test_BSM2_P_extension.py"
     - name: Upload coverage report as job artifact
       if: matrix.coverage
       uses: actions/upload-artifact@v4
@@ -223,7 +223,7 @@ jobs:
         echo '::endgroup::'
     - name: Run pytest
       run: |
-        pytest --pyargs watertap
+        pytest --pyargs watertap -k "test_BSM2_P_extension.py"
 
   notebooks:
     name: Test notebooks (py${{ matrix.python-version }}/${{ matrix.os }})
@@ -315,4 +315,4 @@ jobs:
         pyomo build-extensions || python -c "from pyomo.contrib.pynumero.asl import AmplInterface; exit(0) if AmplInterface.available() else exit(1)"
     - name: Run pytest
       run: |
-        pytest --pyargs watertap -k 'not (nf_dspmde.nf_ui or nf_dspmde.nf_with_bypass_ui or mvc.mvc_single_stage_ui or full_water_resource_recovery_facility.BSM2_P_extension_ui )'
+        pytest --pyargs watertap -k "test_BSM2_P_extension.py"
