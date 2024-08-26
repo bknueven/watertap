@@ -82,6 +82,8 @@ from watertap.core.util.initialization import (
     interval_initializer,
     # assert_degrees_of_freedom
 )
+from watertap.core.util.model_debug_mode import activate
+activate()
 
 # from watertap.costing import WaterTAPCosting
 # from watertap.costing.unit_models.clarifier import (
@@ -123,7 +125,7 @@ def main(bio_P=False):
     m.fs.R7.outlet.conc_mass_comp[:, "S_O2"].unfix()
 
     interval_initializer(m)
-    rescale_variables(m)
+    #rescale_variables(m)
     # Resolve with controls in place
     results = solve(m)
 
@@ -704,7 +706,7 @@ def calc_scale(value):
 
 def solve(m, solver=None):
     if solver is None:
-        solver = get_solver()
+        solver = get_solver(options={"bound_push":1e-20})
     results = solver.solve(m, tee=True)
     check_solve(results, checkpoint="closing recycle", logger=_log, fail_flag=True)
     pyo.assert_optimal_termination(results)
