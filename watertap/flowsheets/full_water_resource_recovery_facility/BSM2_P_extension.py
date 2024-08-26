@@ -701,7 +701,6 @@ def initialize_system(m, bio_P=True, solver=None):
         )  # , optarg={"bound_push":1e-20})
 
     seq.run(m, function)
-    # rescale_variables(m)
 
 
 def rescale_variables(m):
