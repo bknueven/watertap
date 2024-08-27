@@ -20,6 +20,7 @@ but comprises different specifications for default values than BSM2.
 # Some more information about this module
 __author__ = "Chenyu Wang, Adam Atia, Alejandro Garciadiego, Marcus Holly"
 
+import math
 import pyomo.environ as pyo
 from pyomo.network import Arc, SequentialDecomposition
 
@@ -78,6 +79,7 @@ from watertap.unit_models.thickener import (
 
 from watertap.core.util.initialization import (
     check_solve,
+    interval_initializer,
     # assert_degrees_of_freedom
 )
 
@@ -86,6 +88,11 @@ from watertap.core.util.initialization import (
 #     cost_circular_clarifier,
 #     cost_primary_clarifier,
 # )
+
+from watertap.core.util.model_debug_mode import activate
+#activate()
+
+from idaes.core.initialization import BlockTriangularizationInitializer
 
 # Set up logger
 _log = idaeslog.getLogger(__name__)
@@ -108,7 +115,22 @@ def main(bio_P=False):
     m.fs.MX3.pressure_equality_constraints[0.0, 3].deactivate()
     print(f"DOF after initialization: {degrees_of_freedom(m)}")
 
-    results = solve(m)
+    tol = 1e-06
+    bti = BlockTriangularizationInitializer(
+        block_solver="ipopt-watertap",
+        block_solver_options={
+            "bound_push": 1e-10,
+            "tol": tol,
+            "constr_viol_tol": tol,
+            "acceptable_constr_viol_tol": tol,
+            "interval_initialize" : False,
+        },
+        block_solver_call_options={"tee": True},
+    )
+
+    interval_initializer(m)
+    bti.initialize(m)
+    rescale_variables(m)
 
     # Switch to fixed KLa in R5, R6, and R7 (S_O concentration is controlled in R5)
     m.fs.R5.KLa.fix(240)
@@ -117,6 +139,10 @@ def main(bio_P=False):
     m.fs.R5.outlet.conc_mass_comp[:, "S_O2"].unfix()
     m.fs.R6.outlet.conc_mass_comp[:, "S_O2"].unfix()
     m.fs.R7.outlet.conc_mass_comp[:, "S_O2"].unfix()
+
+    interval_initializer(m)
+    bti.initialize(m)
+    rescale_variables(m)
 
     # Resolve with controls in place
     results = solve(m)
@@ -133,6 +159,8 @@ def main(bio_P=False):
     # m.fs.costing.initialize()
     #
     # assert_degrees_of_freedom(m, 0)
+    # interval_initializer(m)
+    # rescale_variables(m)
     #
     # results = solve(m)
     # pyo.assert_optimal_termination(results)
@@ -407,12 +435,12 @@ def set_operating_conditions(m):
     m.fs.FeedWater.flow_vol.fix(20935.15 * pyo.units.m**3 / pyo.units.day)
     m.fs.FeedWater.temperature.fix(308.15 * pyo.units.K)
     m.fs.FeedWater.pressure.fix(1 * pyo.units.atm)
-    m.fs.FeedWater.conc_mass_comp[0, "S_O2"].fix(1e-6 * pyo.units.g / pyo.units.m**3)
-    m.fs.FeedWater.conc_mass_comp[0, "S_F"].fix(1e-6 * pyo.units.g / pyo.units.m**3)
+    m.fs.FeedWater.conc_mass_comp[0, "S_O2"].fix(0 * pyo.units.g / pyo.units.m**3)
+    m.fs.FeedWater.conc_mass_comp[0, "S_F"].fix(0 * pyo.units.g / pyo.units.m**3)
     m.fs.FeedWater.conc_mass_comp[0, "S_A"].fix(70 * pyo.units.g / pyo.units.m**3)
     m.fs.FeedWater.conc_mass_comp[0, "S_NH4"].fix(26.6 * pyo.units.g / pyo.units.m**3)
-    m.fs.FeedWater.conc_mass_comp[0, "S_NO3"].fix(1e-6 * pyo.units.g / pyo.units.m**3)
-    m.fs.FeedWater.conc_mass_comp[0, "S_PO4"].fix(1e-6 * pyo.units.g / pyo.units.m**3)
+    m.fs.FeedWater.conc_mass_comp[0, "S_NO3"].fix(0 * pyo.units.g / pyo.units.m**3)
+    m.fs.FeedWater.conc_mass_comp[0, "S_PO4"].fix(0 * pyo.units.g / pyo.units.m**3)
     m.fs.FeedWater.conc_mass_comp[0, "S_I"].fix(57.45 * pyo.units.g / pyo.units.m**3)
     m.fs.FeedWater.conc_mass_comp[0, "S_N2"].fix(25.19 * pyo.units.g / pyo.units.m**3)
     m.fs.FeedWater.conc_mass_comp[0, "X_I"].fix(84 * pyo.units.g / pyo.units.m**3)
@@ -421,9 +449,9 @@ def set_operating_conditions(m):
     m.fs.FeedWater.conc_mass_comp[0, "X_PAO"].fix(
         51.5262 * pyo.units.g / pyo.units.m**3
     )
-    m.fs.FeedWater.conc_mass_comp[0, "X_PP"].fix(1e-6 * pyo.units.g / pyo.units.m**3)
-    m.fs.FeedWater.conc_mass_comp[0, "X_PHA"].fix(1e-6 * pyo.units.g / pyo.units.m**3)
-    m.fs.FeedWater.conc_mass_comp[0, "X_AUT"].fix(1e-6 * pyo.units.g / pyo.units.m**3)
+    m.fs.FeedWater.conc_mass_comp[0, "X_PP"].fix(0 * pyo.units.g / pyo.units.m**3)
+    m.fs.FeedWater.conc_mass_comp[0, "X_PHA"].fix(0 * pyo.units.g / pyo.units.m**3)
+    m.fs.FeedWater.conc_mass_comp[0, "X_AUT"].fix(0 * pyo.units.g / pyo.units.m**3)
     m.fs.FeedWater.conc_mass_comp[0, "S_IC"].fix(5.652 * pyo.units.g / pyo.units.m**3)
     m.fs.FeedWater.conc_mass_comp[0, "S_K"].fix(374.6925 * pyo.units.g / pyo.units.m**3)
     m.fs.FeedWater.conc_mass_comp[0, "S_Mg"].fix(20 * pyo.units.g / pyo.units.m**3)
@@ -532,6 +560,7 @@ def set_operating_conditions(m):
         iscale.set_scaling_factor(
             block.control_volume.reactions[0.0].rate_expression, 1e3
         )
+        iscale.set_scaling_factor(block.control_volume.rate_reaction_extent, 1e0)
         iscale.set_scaling_factor(block.cstr_performance_eqn, 1e3)
         iscale.set_scaling_factor(
             block.control_volume.rate_reaction_stoichiometry_constraint, 1e3
@@ -548,7 +577,7 @@ def initialize_system(m, bio_P=True, solver=None):
     # Apply sequential decomposition - 1 iteration should suffice
     seq = SequentialDecomposition()
     seq.options.tear_method = "Direct"
-    seq.options.iterLim = 5
+    seq.options.iterLim = 1
     seq.options.tear_set = [m.fs.stream5, m.fs.stream10adm]
 
     G = seq.create_graph(m)
@@ -671,14 +700,31 @@ def initialize_system(m, bio_P=True, solver=None):
     seq.set_guesses_for(m.fs.translator_asm2d_adm1.inlet, tear_guesses2)
 
     def function(unit):
-        unit.initialize(outlvl=idaeslog.INFO, solver="ipopt-watertap")
+        unit.initialize(
+            outlvl=idaeslog.INFO, solver="ipopt-watertap"
+        )  # , optarg={"bound_push":1e-20})
 
     seq.run(m, function)
 
 
+def rescale_variables(m):
+    for var in m.fs.component_data_objects(pyo.Var, descend_into=True):
+        iscale.set_scaling_factor(var, calc_scale(var.value))
+
+
+def calc_scale(value):
+    if value < 0:
+        value = -value
+    if value < 1e-16:
+        value = 1e-16
+    if value > 1e16:
+        value = 1e16
+    return 1 / value
+
+
 def solve(m, solver=None):
     if solver is None:
-        solver = get_solver()
+        solver = get_solver(options={"interval_initialize":False})
     results = solver.solve(m, tee=True)
     check_solve(results, checkpoint="closing recycle", logger=_log, fail_flag=True)
     pyo.assert_optimal_termination(results)
