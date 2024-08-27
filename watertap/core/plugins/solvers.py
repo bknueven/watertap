@@ -43,6 +43,8 @@ from idaes.core.util.scaling import (
 )
 from idaes.logger import getLogger
 
+from watertap.core.util.initialization import interval_initializer
+
 IPython, IPython_available = attempt_import("IPython")
 
 _log = getLogger("watertap.core")
@@ -105,6 +107,8 @@ class _WaterTAPSolverWrapper(abc.ABC):
             self.options["bound_relax_factor"] = 0.0
         if "honor_original_bounds" not in self.options:
             self.options["honor_original_bounds"] = "no"
+        if self.options.pop("interval_initialize", False):
+            interval_initializer(blk)
 
         if not self._is_user_scaling():
             self._set_options(solver)
@@ -393,6 +397,13 @@ class _BaseDebugSolverWrapper:
                 setattr(self.options, key, kwds["options"][key])
 
         self._value_cache = pyo.ComponentMap()
+
+    def __getattr__(self, attr):
+        # if not available here, ask the base_solver
+        try:
+            return getattr(pyo.SolverFactory(self._base_solver), attr)
+        except AttributeError:
+            raise
 
     def restore_initial_values(self, blk):
         for var in blk.component_data_objects(pyo.Var, descend_into=True):

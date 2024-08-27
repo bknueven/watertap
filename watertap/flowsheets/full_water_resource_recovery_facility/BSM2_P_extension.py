@@ -89,6 +89,9 @@ from watertap.core.util.initialization import (
 #     cost_primary_clarifier,
 # )
 
+from watertap.core.util.model_debug_mode import activate
+#activate()
+
 from idaes.core.initialization import BlockTriangularizationInitializer
 
 # Set up logger
@@ -120,6 +123,7 @@ def main(bio_P=False):
             "tol": tol,
             "constr_viol_tol": tol,
             "acceptable_constr_viol_tol": tol,
+            "interval_initialize" : False,
         },
         block_solver_call_options={"tee": True},
     )
@@ -711,16 +715,16 @@ def rescale_variables(m):
 def calc_scale(value):
     if value < 0:
         value = -value
-    if value < 1e-10:
-        value = 1e-10
-    if value > 1e10:
-        value = 1e10
+    if value < 1e-16:
+        value = 1e-16
+    if value > 1e16:
+        value = 1e16
     return 1 / value
 
 
 def solve(m, solver=None):
     if solver is None:
-        solver = get_solver()
+        solver = get_solver(options={"interval_initialize":False})
     results = solver.solve(m, tee=True)
     check_solve(results, checkpoint="closing recycle", logger=_log, fail_flag=True)
     pyo.assert_optimal_termination(results)
