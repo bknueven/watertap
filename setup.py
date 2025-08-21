@@ -75,8 +75,6 @@ setup(
         "pyyaml",  # watertap.core.wt_database
         # for parameter_sweep
         "parameter-sweep >=0.1.0",
-        "numpy<2.3",
-        "scipy<1.16",
         "pint<0.25",
     ],
     extras_require={
