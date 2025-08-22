@@ -133,7 +133,6 @@ jobs:
         pytest --pyargs watertap --idaes-flowsheets --entry-points-group watertap.flowsheets
     - name: Upload coverage report as job artifact
       if: 'false'
-      if: matrix.coverage
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report-${{ matrix.os }}
