@@ -31,7 +31,7 @@ In a python module containing the model and script to solve that model, the user
 
 .. testcleanup::
 
-   from watertap_solvers.model_debug_mode import decativate
+   from watertap_solvers.model_debug_mode import deactivate
    deactivate()
 
 Example behavior without debugging mode
